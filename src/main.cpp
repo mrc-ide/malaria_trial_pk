@@ -111,7 +111,8 @@ Rcpp::List run_mcmc(Rcpp::List args, TYPE1 get_loglike, TYPE2 get_logprior) {
     particle_vec[r].init(s, s.beta_raised[r]);
     
     // initialise particle initial likelihood and prior values
-    particle_vec[r].init_like(get_loglike, get_logprior);
+    //particle_vec[r].init_like(get_loglike, get_logprior);
+    particle_vec[r].init_like();
   }
   
   // objects for storing loglikelihood and theta values over iterations
@@ -159,7 +160,8 @@ Rcpp::List run_mcmc(Rcpp::List args, TYPE1 get_loglike, TYPE2 get_logprior) {
     for (int r = 0; r < rungs; ++r) {
       
       // update particles
-      particle_vec[r].update(get_loglike, get_logprior);
+      //particle_vec[r].update(get_loglike, get_logprior);
+      particle_vec[r].update();
       
       // store results
       loglike_burnin[r][rep] = particle_vec[r].loglike;
@@ -219,7 +221,8 @@ Rcpp::List run_mcmc(Rcpp::List args, TYPE1 get_loglike, TYPE2 get_logprior) {
     for (int r = 0; r < rungs; ++r) {
       
       // update particles
-      particle_vec[r].update(get_loglike, get_logprior);
+      //particle_vec[r].update(get_loglike, get_logprior);
+      particle_vec[r].update();
       
       // store results
       loglike_sampling[r][rep] = particle_vec[r].loglike;

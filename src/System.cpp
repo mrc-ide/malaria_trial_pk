@@ -12,9 +12,6 @@ void System::load(Rcpp::List args) {
   Rcpp::List args_progress = args["args_progress"];
   Rcpp::List args_progress_burnin = args_progress["pb_burnin"];
   
-  // data
-  x = args_params["x"];
-  
   // misc
   misc = args_params["misc"];
   
@@ -41,5 +38,24 @@ void System::load(Rcpp::List args) {
   save_hot_draws = rcpp_to_bool(args_params["save_hot_draws"]);
   pb_markdown = rcpp_to_bool(args_params["pb_markdown"]);
   silent = rcpp_to_bool(args_params["silent"]);
+  
+  
+  // unpack raw data
+  if (!silent) {
+    print("Loading data");
+  }
+  Rcpp::List data_list = args_params["data"];
+  vector<int> ind = rcpp_to_vector_int(data_list["ind"]);
+  vector<int> time = rcpp_to_vector_int(data_list["time"]);
+  vector<double> drug_conc_raw = rcpp_to_vector_double(data_list["drug_conc"]);
+  ind_weight = rcpp_to_vector_double(data_list["ind_weight"]);
+  n_ind = ind_weight.size();
+  n_time = drug_conc_raw.size() / n_ind;
+  
+  // reformat into matrix
+  drug_conc = vector<vector<double>>(n_ind, vector<double>(n_time));
+  for (int i = 0; i < n_ind; ++i) {
+    drug_conc[ind[i] - 1][time[i]] = drug_conc_raw[i];
+  }
   
 }

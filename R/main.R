@@ -210,9 +210,6 @@ check_params <- function(x) {
 
 run_mcmc <- function(data,
                      df_params,
-                     misc = list(),
-                     loglike,
-                     logprior,
                      burnin = 1e3,
                      samples = 1e4,
                      rungs = 1,
@@ -227,6 +224,11 @@ run_mcmc <- function(data,
                      save_hot_draws = FALSE,
                      silent = FALSE) {
   
+  # dummy variables to work within drjacoby framework with minimal effort
+  loglike <- function() {0.0}
+  logprior <- function() {0.0}
+  misc = list()
+  
   # declare variables to avoid "no visible binding" issues
   phase <- rung <- value <- chain <- link <- NULL
   
@@ -234,17 +236,6 @@ run_mcmc <- function(data,
   on.exit(gc())
   
   # ---------- check inputs ----------
-  
-  # check data
-  assert_list_named(data)
-  assert_numeric(unlist(data))
-  
-  # check misc
-  assert_list(misc)
-  
-  # check loglikelihood and logprior functions
-  assert_class(loglike, c("function", "character"))
-  assert_class(logprior, c("function", "character"))
   
   # check MCMC parameters
   assert_single_pos_int(burnin, zero_allowed = FALSE)
@@ -349,7 +340,7 @@ run_mcmc <- function(data,
   # ---------- define argument lists ----------
   
   # parameters to pass to C++
-  args_params <- list(x = data,
+  args_params <- list(data = data,
                       misc = misc,
                       loglike_use_cpp = loglike_use_cpp,
                       logprior_use_cpp = logprior_use_cpp,

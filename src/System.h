@@ -13,7 +13,10 @@ public:
   // PUBLIC OBJECTS
   
   // data
-  Rcpp::List x;
+  std::vector<std::vector<double>> drug_conc;
+  std::vector<double> ind_weight;
+  int n_ind;
+  int n_time;
   
   // misc object
   Rcpp::List misc;

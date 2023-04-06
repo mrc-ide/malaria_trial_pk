@@ -123,3 +123,60 @@ double Particle::get_adjustment(int i) {
   
 }
 
+//------------------------------------------------
+// fixed log-likelihood
+double Particle::get_loglike(Rcpp::NumericVector params) {
+  
+  // extract parameters
+  double FOI = params["FOI"];
+  double hourly_FOI = FOI / 24.0;
+  double min_prob = params["min_prob"];
+  double half_point = params["half_point"];
+  double hill_power = params["hill_power"];
+  
+  // dummy example of how we can loop over the matrix of drug concentrations
+  double ret = 0.0;
+  for (int i = 0; i < s_ptr->n_ind; ++i) {
+    for (int j = 0; j < s_ptr->n_time; ++j) {
+      double prob_susceptible = min_prob + (1.0 - min_prob) / (1.0 + pow(s_ptr->drug_conc[i][j] / half_point, hill_power));
+      double prob_infection = 1.0 - exp(- hourly_FOI * prob_susceptible);
+    }
+  }
+  
+  return ret;
+}
+
+//------------------------------------------------
+// fixed log-prior
+double Particle::get_logprior(Rcpp::NumericVector params) {
+  
+  // extract parameters
+  double FOI = params["FOI"];
+  double min_prob = params["min_prob"];
+  double half_point = params["half_point"];
+  double hill_power = params["hill_power"];
+  
+  // lognormal prior on FOI
+  double ret = 0.0;
+  double FOI_mean = 0.01;
+  double FOI_sd = 0.05;
+  double FOI_sigma2 = log(pow(FOI_sd / FOI_mean, 2.0) + 1.0);
+  double FOI_mu = log(FOI_mean) - FOI_sigma2 / 2.0;
+  ret += R::dlnorm(FOI, FOI_mu, pow(FOI_sigma2, 0.5), true);
+  
+  // beta prior on min_prob
+  ret += R::dbeta(min_prob, 1.0, 19.0, true);
+  
+  // lognormal prior on half-point
+  double half_point_mean = 1.5;
+  double half_point_sd = 1.0;
+  double half_point_sigma2 = log(pow(half_point_sd / half_point_mean, 2.0) + 1.0);
+  double half_point_mu = log(half_point_mean) - half_point_sigma2 / 2.0;
+  ret += R::dlnorm(half_point, half_point_mu, pow(half_point_sigma2, 0.5), true);
+  
+  // half-normal prior on hill_power
+  ret += R::dnorm4(hill_power, 0.0, 2.0, true);
+  
+  return ret;
+}
+

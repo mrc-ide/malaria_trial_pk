@@ -56,17 +56,16 @@ public:
   void init(System &s, double beta_raised);
   
   // initialise likelihood and prior values
-  template<class TYPE1, class TYPE2>
-  void init_like(TYPE1 get_loglike, TYPE2 get_logprior) {
+  void init_like() {
     for (int i = 0; i < d; ++i) {
       for (unsigned int j = 0; j < s_ptr->block[i].size(); ++j) {
         int this_block = s_ptr->block[i][j];
         s_ptr->misc["block"] = this_block;
-        loglike_block[this_block - 1] = Rcpp::as<double>(get_loglike(theta, s_ptr->x, s_ptr->misc));
+        loglike_block[this_block - 1] = get_loglike(theta);
       }
     }
     loglike = sum(loglike_block);
-    logprior = Rcpp::as<double>(get_logprior(theta, s_ptr->misc));
+    logprior = get_logprior(theta);
     // Catch for -Inf in likelihood or prior given init theta
     if(loglike == R_NegInf || logprior == R_NegInf){
       Rcpp::Rcerr << "\n Current theta " << theta << std::endl;
@@ -75,8 +74,7 @@ public:
   }
   
   // update theta[i] via univariate Metropolis-Hastings
-  template<class TYPE1, class TYPE2>
-  void update(TYPE1 get_loglike, TYPE2 get_logprior) {
+  void update() {
     
     // set theta_prop and phi_prop to current values of theta and phi
     theta_prop = Rcpp::clone(theta);
@@ -103,13 +101,12 @@ public:
       for (unsigned int j = 0; j < s_ptr->block[i].size(); ++j) {
         int this_block = s_ptr->block[i][j];
         s_ptr->misc["block"] = this_block;
-        loglike_prop_block[this_block - 1] = Rcpp::as<double>(get_loglike(theta_prop, s_ptr->x, s_ptr->misc));
+        loglike_prop_block[this_block - 1] = get_loglike(theta_prop);
       }
       
       // calculate overall likelihood and prior of proposed theta
       loglike_prop = sum(loglike_prop_block);
-      
-      logprior_prop = Rcpp::as<double>(get_logprior(theta_prop, s_ptr->misc));
+      logprior_prop = get_logprior(theta_prop);
       
       // Check for NA/NaN/Inf in likelihood or prior
       if(R_IsNaN(loglike_prop) || loglike_prop == R_PosInf || R_IsNA(loglike_prop)){
@@ -169,5 +166,8 @@ public:
   void phi_prop_to_theta_prop(int i);
   void theta_to_phi();
   double get_adjustment(int i);
+  
+  double get_logprior(Rcpp::NumericVector params);
+  double get_loglike(Rcpp::NumericVector params);
   
 };

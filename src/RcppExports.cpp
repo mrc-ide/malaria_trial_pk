@@ -12,7 +12,7 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 
 // main_cpp
 Rcpp::List main_cpp(Rcpp::List args);
-RcppExport SEXP _drjacoby_main_cpp(SEXP argsSEXP) {
+RcppExport SEXP _malariatrialpk_main_cpp(SEXP argsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -23,11 +23,11 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_drjacoby_main_cpp", (DL_FUNC) &_drjacoby_main_cpp, 1},
+    {"_malariatrialpk_main_cpp", (DL_FUNC) &_malariatrialpk_main_cpp, 1},
     {NULL, NULL, 0}
 };
 
-RcppExport void R_init_drjacoby(DllInfo *dll) {
+RcppExport void R_init_malariatrialpk(DllInfo *dll) {
     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
     R_useDynamicSymbols(dll, FALSE);
 }

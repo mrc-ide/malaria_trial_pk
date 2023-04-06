@@ -2,6 +2,6 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 main_cpp <- function(args) {
-    .Call(`_drjacoby_main_cpp`, args)
+    .Call(`_malariatrialpk_main_cpp`, args)
 }
 

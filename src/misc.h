@@ -16,6 +16,12 @@
 #include <cfloat>
 
 //------------------------------------------------
+// define very large/small numbers for catching overflow/underflow problems
+const int OVERFLO_INT = INT_MAX / 100;
+const double OVERFLO_DOUBLE = DBL_MAX / 100;
+const double UNDERFLO_DOUBLE = DBL_MIN / 100;
+
+//------------------------------------------------
 // basic sum over elements in a vector
 template<class TYPE>
 TYPE sum(const std::vector<TYPE> &x_vec) {

@@ -7,9 +7,6 @@
 run_mcmc(
   data,
   df_params,
-  misc = list(),
-  loglike,
-  logprior,
   burnin = 1000,
   samples = 10000,
   rungs = 1,
@@ -32,14 +29,6 @@ integer and Boolean values can be used, keep in mind that these will be
 recast as doubles in the likelihood (i.e. \code{TRUE = 1.0}).}
 
 \item{df_params}{a data.frame of parameters (see \code{?define_params}).}
-
-\item{misc}{optional list object passed to likelihood and prior. This can be
-useful for passing values that are not strictly data, for example passing a
-lookup table to the prior function.}
-
-\item{loglike, logprior}{the log-likelihood and log-prior functions used in
-the MCMC. Can either be passed in as R functions (not in quotes), or as
-character strings naming compiled C++ functions (in quotes).}
 
 \item{burnin}{the number of burn-in iterations. Automatic tuning of proposal
 standard deviations is only active during the burn-in period.}
@@ -94,6 +83,14 @@ If \code{FALSE} (the default) only log-likelihoods and log-priors are
 stored from heated chains.}
 
 \item{silent}{whether to suppress all console output.}
+
+\item{misc}{optional list object passed to likelihood and prior. This can be
+useful for passing values that are not strictly data, for example passing a
+lookup table to the prior function.}
+
+\item{loglike, logprior}{the log-likelihood and log-prior functions used in
+the MCMC. Can either be passed in as R functions (not in quotes), or as
+character strings naming compiled C++ functions (in quotes).}
 }
 \description{
 Run MCMC either with or without parallel tempering turned on.

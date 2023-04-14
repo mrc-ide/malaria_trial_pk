@@ -17,31 +17,25 @@ public:
   std::vector<double> ind_weight;
   int n_ind;
   int n_time;
-  
-  // misc object
-  Rcpp::List misc;
-  
-  // model parameters
-  Rcpp::NumericVector theta_vector;
-  std::vector<double> theta_min;
-  std::vector<double> theta_max;
-  std::vector<std::vector<int>> block;
-  int n_block;
-  std::vector<int> trans_type;
-  std::vector<bool> skip_param;
-  int d;
+  std::vector<int> control_n;
+  std::vector<int> control_n_inf;
+  std::vector<int> control_time0;
+  std::vector<int> control_time1;
+  std::vector<int> treat_n;
+  std::vector<int> treat_n_inf;
+  std::vector<int> treat_time0;
+  std::vector<int> treat_time1;
   
   // MCMC parameters
   int burnin;
   int samples;
   int rungs;
   bool coupling_on;
-  std::vector<double> beta_raised;
+  std::vector<double> beta;
   int chain;
   double target_acceptance;
   
   // misc parameters
-  bool save_hot_draws;
   bool pb_markdown;
   bool silent;
   
@@ -52,5 +46,4 @@ public:
   
   // public methods
   void load(Rcpp::List args);
-  
 };

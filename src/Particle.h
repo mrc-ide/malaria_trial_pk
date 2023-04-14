@@ -16,32 +16,33 @@ public:
   // pointer to system object
   System * s_ptr;
   
-  // local copies of some parameters for convenience
-  int d;
-  
   // thermodynamic power
-  double beta_raised;
+  double beta;
   
-  // theta is the parameter vector in natural space
-  Rcpp::NumericVector theta;
-  Rcpp::NumericVector theta_prop;
+  // parameters
+  double lambda;
+  double min_prob;
+  double half_point;
+  double hill_power;
   
-  // phi is a vector of transformed parameters
-  Rcpp::NumericVector phi;
-  Rcpp::NumericVector phi_prop;
+  // intermediate objects
+  std::vector<std::vector<double>> drug_pow;
+  std::vector<std::vector<double>> drug_pow_prop;
+  std::vector<std::vector<double>> sum_hill_unscaled;
+  std::vector<std::vector<double>> sum_hill_unscaled_prop;
   
   // proposal parameters
-  std::vector<double> bw;
-  std::vector<int> bw_index;
+  double bw_lambda;
+  double bw_min_prob;
+  double bw_half_point;
+  double bw_hill_power;
   double bw_stepsize;
   
   // likelihoods and priors
-  std::vector<double> loglike_block;
-  std::vector<double> loglike_prop_block;
+  double loglike_control;
+  double loglike_treat;
   double loglike;
-  double loglike_prop;
   double logprior;
-  double logprior_prop;
   
   // store acceptance rates
   int accept_count;
@@ -53,121 +54,21 @@ public:
   Particle() {};
   
   // initialise everything except for likelihood and prior values
-  void init(System &s, double beta_raised);
+  void init(System &s, double beta);
   
-  // initialise likelihood and prior values
-  void init_like() {
-    for (int i = 0; i < d; ++i) {
-      for (unsigned int j = 0; j < s_ptr->block[i].size(); ++j) {
-        int this_block = s_ptr->block[i][j];
-        s_ptr->misc["block"] = this_block;
-        loglike_block[this_block - 1] = get_loglike(theta);
-      }
-    }
-    loglike = sum(loglike_block);
-    logprior = get_logprior(theta);
-    // Catch for -Inf in likelihood or prior given init theta
-    if(loglike == R_NegInf || logprior == R_NegInf){
-      Rcpp::Rcerr << "\n Current theta " << theta << std::endl;
-      Rcpp::stop("Starting values result in -Inf in likelihood or prior. Consider setting inital values in the parameters data.frame.");
-    }
-  }
-  
-  // update theta[i] via univariate Metropolis-Hastings
-  void update() {
-    
-    // set theta_prop and phi_prop to current values of theta and phi
-    theta_prop = Rcpp::clone(theta);
-    phi_prop = Rcpp::clone(phi);
-    
-    // loop through parameters
-    for (int i = 0; i < d; ++i) {
-      if (s_ptr->skip_param[i]) {
-        continue;
-      }
-      
-      // generate new phi_prop[i]
-      propose_phi(i);
-      
-      // transform phi_prop[i] to theta_prop[i]
-      phi_prop_to_theta_prop(i);
-      
-      // calculate adjustment factor, taking into account forwards and backwards
-      // moves
-      double adj = get_adjustment(i);
-      
-      // calculate loglikelihood in each block
-      loglike_prop_block = loglike_block;
-      for (unsigned int j = 0; j < s_ptr->block[i].size(); ++j) {
-        int this_block = s_ptr->block[i][j];
-        s_ptr->misc["block"] = this_block;
-        loglike_prop_block[this_block - 1] = get_loglike(theta_prop);
-      }
-      
-      // calculate overall likelihood and prior of proposed theta
-      loglike_prop = sum(loglike_prop_block);
-      logprior_prop = get_logprior(theta_prop);
-      
-      // Check for NA/NaN/Inf in likelihood or prior
-      if(R_IsNaN(loglike_prop) || loglike_prop == R_PosInf || R_IsNA(loglike_prop)){
-        Rcpp::Rcerr << "\n Current theta " << theta_prop << std::endl;
-        Rcpp::stop("NA, NaN or Inf in likelihood");
-      }
-      if(R_IsNaN(logprior_prop) || logprior_prop == R_PosInf || R_IsNA(logprior_prop)){
-        Rcpp::Rcerr << "\n Current theta " << theta_prop << std::endl;
-        Rcpp::stop("NA, NaN or Inf in prior");
-      }
-      
-      // calculate Metropolis-Hastings ratio
-      double MH;
-      if(beta_raised == 0.0){
-        MH = (logprior_prop - logprior) + adj;
-      } else {
-        MH = beta_raised*(loglike_prop - loglike) + (logprior_prop - logprior) + adj;
-      }
-
-      // accept or reject move
-      bool MH_accept = (log(R::runif(0,1)) < MH);
-      
-      // implement changes
-      if (MH_accept) {
-        // update theta and phi
-        theta[i] = theta_prop[i];
-        phi[i] = phi_prop[i];
-        
-        // update likelihoods
-        loglike_block = loglike_prop_block;
-        loglike = loglike_prop;
-        logprior = logprior_prop;
-        
-        // Robbins-Monro positive update  (on the log scale)
-        bw[i] = exp(log(bw[i]) + bw_stepsize*(1 - s_ptr->target_acceptance) / sqrt(bw_index[i]));
-        bw_index[i]++;
-        
-        // add to acceptance rate count
-        accept_count++;
-        
-      } else {
-        // reset theta_prop and phi_prop
-        theta_prop[i] = theta[i];
-        phi_prop[i] = phi[i];
-        
-        // Robbins-Monro negative update (on the log scale)
-        bw[i] = exp(log(bw[i]) - bw_stepsize*s_ptr->target_acceptance / sqrt(bw_index[i]));
-        bw_index[i]++;
-        
-      } // end MH step
-    }  // end loop over parameters
-    
-  }  // end update_univar function
-  
-  // other public methods
-  void propose_phi(int i);
-  void phi_prop_to_theta_prop(int i);
-  void theta_to_phi();
-  double get_adjustment(int i);
-  
-  double get_logprior(Rcpp::NumericVector params);
-  double get_loglike(Rcpp::NumericVector params);
+  // main methods
+  void update(bool RM_on, int iteration);
+  void update_lambda(bool RM_on, int iteration);
+  void update_min_prob(bool RM_on, int iteration);
+  void update_half_point(bool RM_on, int iteration);
+  void update_hill_power(bool RM_on, int iteration);
+  void recalc_drug_pow(std::vector<std::vector<double>> &mat, double k);
+  void recalc_sum_hill_unscaled(std::vector<std::vector<double>> &mat, double h,
+                                std::vector<std::vector<double>> &drug_pow_);
+  double get_loglike_control(double lambda_);
+  double get_loglike_treat(double lambda_, double min_prob_,
+                           std::vector<std::vector<double>> &sum_hill_unscaled_);
+  double get_logprior(double lambda_, double min_prob_,
+                      double half_point_, double hill_power_);
   
 };

@@ -37,7 +37,7 @@ Rcpp::List main_cpp(Rcpp::List args) {
   // objects for storing loglikelihood parameters
   vector<double> loglike(s.burnin + s.samples);
   vector<double> logprior(s.burnin + s.samples);
-  vector<double> lambda(s.burnin + s.samples);
+  vector<vector<double>> lambda(s.burnin + s.samples);
   vector<double> min_prob(s.burnin + s.samples);
   vector<double> half_point(s.burnin + s.samples);
   vector<double> hill_power(s.burnin + s.samples);
@@ -218,11 +218,11 @@ void coupling(vector<Particle> &particle_vec, vector<int> &mc_accept) {
     if (accept_move) {
       
       // swap parameter values
-      double tmp = particle_vec[rung1].lambda;
+      vector<double> tmp_vec = particle_vec[rung1].lambda;
       particle_vec[rung1].lambda = particle_vec[rung2].lambda;
-      particle_vec[rung2].lambda = tmp;
+      particle_vec[rung2].lambda = tmp_vec;
       
-      tmp = particle_vec[rung1].min_prob;
+      double tmp = particle_vec[rung1].min_prob;
       particle_vec[rung1].min_prob = particle_vec[rung2].min_prob;
       particle_vec[rung2].min_prob = tmp;
       

@@ -20,7 +20,7 @@ public:
   double beta;
   
   // parameters
-  double lambda;
+  std::vector<double> lambda;
   double min_prob;
   double half_point;
   double hill_power;
@@ -28,8 +28,7 @@ public:
   // intermediate objects
   std::vector<std::vector<double>> drug_pow;
   std::vector<std::vector<double>> drug_pow_prop;
-  std::vector<std::vector<double>> sum_hill_unscaled;
-  std::vector<std::vector<double>> sum_hill_unscaled_prop;
+  std::vector<std::vector<double>> exp_rate;
   
   // proposal parameters
   double bw_lambda;
@@ -63,12 +62,11 @@ public:
   void update_half_point(bool RM_on, int iteration);
   void update_hill_power(bool RM_on, int iteration);
   void recalc_drug_pow(std::vector<std::vector<double>> &mat, double k);
-  void recalc_sum_hill_unscaled(std::vector<std::vector<double>> &mat, double h,
-                                std::vector<std::vector<double>> &drug_pow_);
-  double get_loglike_control(double lambda_);
-  double get_loglike_treat(double lambda_, double min_prob_,
-                           std::vector<std::vector<double>> &sum_hill_unscaled_);
-  double get_logprior(double lambda_, double min_prob_,
+  double get_loglike_control(std::vector<double> &lambda_);
+  double get_loglike_treat(std::vector<double> &lambda_,
+                           double min_prob_, double half_point_,
+                           std::vector<std::vector<double>> &drug_pow_);
+  double get_logprior(std::vector<double> &lambda_, double min_prob_,
                       double half_point_, double hill_power_);
   
 };

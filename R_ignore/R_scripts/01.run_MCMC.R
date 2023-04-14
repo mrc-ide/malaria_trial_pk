@@ -43,36 +43,22 @@ mcmc <- run_mcmc(data = list(data_drug = dat_drug,
                              data_control = dat_control,
                              data_treat = dat_treat),
                  burnin = 1e2,
-                 samples = 5e2,
-                 chains = 10)
+                 samples = 1e3,
+                 chains = 1)
+
+
 
 # --------------------------
 # exploratory plots
 
-mcmc %>%
-  dplyr::filter(phase == "sampling") %>%
+mcmc$output %>%
+  #dplyr::filter(phase == "sampling") %>%
+  dplyr::select(-c(phase, logprior, loglikelihood)) %>%
+  pivot_longer(cols = -c(chain, iteration), names_to = "parameter", values_to = "value") %>%
+  mutate(parameter = factor(parameter, levels = c(sprintf("lambda_%s", 1:13), "min_prob", "half_point", "hill_power"))) %>%
   ggplot() + theme_bw() +
-  geom_point(aes(x = iteration, y = lambda, col = chain))
-
-mcmc %>%
-  dplyr::filter(phase == "sampling") %>%
-  ggplot() + theme_bw() +
-  geom_point(aes(x = iteration, y = min_prob, col = chain))
-
-mcmc %>%
-  dplyr::filter(phase == "sampling") %>%
-  ggplot() + theme_bw() +
-  geom_point(aes(x = iteration, y = half_point, col = chain))
-
-mcmc %>%
-  dplyr::filter(phase == "sampling") %>%
-  ggplot() + theme_bw() +
-  geom_point(aes(x = iteration, y = hill_power, col = chain))
-
-mcmc %>%
-  dplyr::filter(phase == "sampling") %>%
-  ggplot() + theme_bw() +
-  geom_point(aes(x = half_point, y = hill_power, col = chain))
+  geom_point(aes(x = iteration, y = value, col = chain), size = 0.5) +
+  facet_wrap(~parameter, scales = "free_y")
 
 
 # --------------------------

@@ -17,14 +17,21 @@ public:
   std::vector<double> ind_weight;
   int n_ind;
   int n_time;
+  
   std::vector<int> control_n;
   std::vector<int> control_n_inf;
   std::vector<int> control_time0;
   std::vector<int> control_time1;
+  
   std::vector<int> treat_n;
   std::vector<int> treat_n_inf;
   std::vector<int> treat_time0;
   std::vector<int> treat_time1;
+  
+  // lambda weekly weighting
+  int n_weeks;
+  std::vector<std::vector<int>> control_lambda_index;
+  std::vector<std::vector<double>> control_lambda_weight;
   
   // MCMC parameters
   int burnin;

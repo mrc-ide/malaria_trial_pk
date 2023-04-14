@@ -59,4 +59,9 @@ void System::load(Rcpp::List args) {
   for (size_t i = 0; i < ind.size(); ++i) {
     drug_conc[ind[i] - 1][time[i]] = drug_conc_raw[i];
   }
+  
+  // lambda weekly weighting
+  n_weeks = rcpp_to_int(args_params["n_weeks"]);
+  control_lambda_index = rcpp_to_matrix_int(args_params["control_lambda_index"]);
+  control_lambda_weight = rcpp_to_matrix_double(args_params["control_lambda_weight"]);
 }

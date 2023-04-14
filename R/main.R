@@ -86,11 +86,33 @@ run_mcmc <- function(data,
   assert_single_logical(pb_markdown)
   assert_single_logical(silent)
   
+  # ---------- pre-processing ----------
+  
+  # get number of weeks in control data and define weekly breaks at hourly
+  # resolution
+  data_control <- data$data_control
+  n_weeks <- ceiling(max(data_control$time.1) / 24 / 7)
+  week_breaks <- (0:n_weeks)*7*24
+  
+  # populate two lists. control_lambda_index tells us which lambda parameter
+  # values are needed for each window, and control_lambda_weight tells us the
+  # corresponding weighting of these parameters
+  control_lambda_index <- list()
+  control_lambda_weight <- list()
+  for (i in 1:nrow(data_control)) {
+    window_days <- data_control$time[i]:(data_control$time.1[i] - 1)
+    window_match <- as.numeric(cut(window_days, week_breaks, right = FALSE))
+    control_lambda_index[[i]] <- unique(window_match)
+    control_lambda_weight[[i]] <- as.vector(table(window_match))
+  }
   
   # ---------- define argument lists ----------
   
   # parameters to pass to C++
   args_params <- list(data = data,
+                      n_weeks = n_weeks,
+                      control_lambda_index = control_lambda_index,
+                      control_lambda_weight = control_lambda_weight,
                       burnin = burnin,
                       samples = samples,
                       rungs = rungs,
@@ -142,24 +164,30 @@ run_mcmc <- function(data,
   
   # make main output data.frame
   df_output <- mapply(function(i) {
+    
+    # process lambda values
+    lambda_mat <- matrix(unlist(output_raw[[i]]$lambda), ncol = n_weeks, byrow = TRUE)
+    colnames(lambda_mat) <- sprintf("lambda_%s", 1:n_weeks)
+    
+    # combine with other output
     data.frame(chain = i,
                phase = c(rep("burnin", burnin), rep("sampling", samples)),
-               iteration = 1:(burnin + samples),
-               lambda = output_raw[[i]]$lambda,
-               min_prob = output_raw[[i]]$min_prob,
-               half_point = output_raw[[i]]$half_point,
-               hill_power = output_raw[[i]]$hill_power,
-               logprior = output_raw[[i]]$logprior,
-               loglikelihood = output_raw[[i]]$loglike)
+               iteration = 1:(burnin + samples)) %>%
+      bind_cols(lambda_mat) %>%
+      bind_cols(data.frame(min_prob = output_raw[[i]]$min_prob,
+                           half_point = output_raw[[i]]$half_point,
+                           hill_power = output_raw[[i]]$hill_power,
+                           logprior = output_raw[[i]]$logprior,
+                           loglikelihood = output_raw[[i]]$loglike))
   }, seq_along(output_raw), SIMPLIFY = FALSE) %>%
     dplyr::bind_rows() %>%
     dplyr::mutate(chain = as.factor(chain))
   
-  return(df_output)
+  # make final output object
+  output_processed <- list(output = df_output)
   
-  # append to output list
-  output_processed <- list(output = df_output,
-                           pt = df_pt)
+  return(output_processed)
+  
   
   ## Diagnostics
   output_processed$diagnostics <- list()

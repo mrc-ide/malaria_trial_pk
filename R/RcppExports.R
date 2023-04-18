@@ -5,3 +5,7 @@ main_cpp <- function(args) {
     .Call(`_malariatrialpk_main_cpp`, args)
 }
 
+get_loglike_cpp <- function(args) {
+    .Call(`_malariatrialpk_get_loglike_cpp`, args)
+}
+

@@ -38,14 +38,14 @@ dat_treat <- dat_trial %>%
 # --------------------------
 
 # run MCMC
+set.seed(1)
 mcmc <- run_mcmc(data = list(data_drug = dat_drug,
                              ind_weight = w_combined,
                              data_control = dat_control,
                              data_treat = dat_treat),
                  burnin = 1e2,
-                 samples = 1e3,
-                 chains = 1)
-
+                 samples = 1e2,
+                 chains = 5)
 
 
 # --------------------------
@@ -60,6 +60,26 @@ mcmc$output %>%
   geom_point(aes(x = iteration, y = value, col = chain), size = 0.5) +
   facet_wrap(~parameter, scales = "free_y")
 
+# param_bad <- mcmc$output %>%
+#   dplyr::filter(chain == 3) %>%
+#   dplyr::filter(iteration == 1100) %>%
+#   dplyr::select(-c(chain, phase, iteration, logprior, loglikelihood)) %>%
+#   unlist()
+
+get_loglike(data = list(data_drug = dat_drug,
+                        ind_weight = w_combined,
+                        data_control = dat_control,
+                        data_treat = dat_treat),
+            params = as.list(param_bad))
+
+param_prop <- param_bad
+param_prop["half_point"] <- 0.1
+
+get_loglike(data = list(data_drug = dat_drug,
+                        ind_weight = w_combined,
+                        data_control = dat_control,
+                        data_treat = dat_treat),
+            params = as.list(param_prop))
 
 # --------------------------
 # save output to file

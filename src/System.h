@@ -52,5 +52,6 @@ public:
   System() {};
   
   // public methods
-  void load(Rcpp::List args);
+  void load_data(Rcpp::List args_data);
+  void load_params(Rcpp::List args_params);
 };

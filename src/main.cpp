@@ -15,7 +15,8 @@ Rcpp::List main_cpp(Rcpp::List args) {
   
   // create sytem object and load args
   System s;
-  s.load(args);
+  s.load_data(args["args_data"]);
+  s.load_params(args["args_params"]);
   
   // extract R utility functions that will be called from within MCMC
   Rcpp::List args_functions = args["args_functions"];
@@ -250,3 +251,19 @@ void coupling(vector<Particle> &particle_vec, vector<int> &mc_accept) {
   }  // end loop over rungs
 }
 
+//------------------------------------------------
+// return loglikelihood
+double get_loglike_cpp(Rcpp::List args) {
+  
+  // create sytem object and load data only
+  System s;
+  s.load_data(args["args_data"]);
+  
+  // create single particle and initialise
+  Particle p;
+  p.init(s, 1.0);
+  
+  // get likelihood
+  double ret = p.get_loglike_fromparams(args["params"]);
+  return ret;
+}

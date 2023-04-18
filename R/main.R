@@ -108,12 +108,14 @@ run_mcmc <- function(data,
   
   # ---------- define argument lists ----------
   
-  # parameters to pass to C++
-  args_params <- list(data = data,
-                      n_weeks = n_weeks,
+  # data to pass to C++
+  args_data <- c(data,
+                 list(n_weeks = n_weeks,
                       control_lambda_index = control_lambda_index,
-                      control_lambda_weight = control_lambda_weight,
-                      burnin = burnin,
+                      control_lambda_weight = control_lambda_weight))
+  
+  # parameters to pass to C++
+  args_params <- list(burnin = burnin,
                       samples = samples,
                       rungs = rungs,
                       coupling_on = coupling_on,
@@ -125,30 +127,30 @@ run_mcmc <- function(data,
   # functions to pass to C++
   args_functions <- list(update_progress = update_progress)
   
-  # complete list of arguments
-  args <- list(args_params = args_params,
-               args_functions = args_functions)
-  
-  # create distinct argument sets over chains
-  parallel_args <- replicate(chains, args, simplify = FALSE)
-  for (i in 1:chains) {
-    parallel_args[[i]]$args_params$chain <- i
-  }
-  
   
   # ---------- run MCMC ----------
   
-  # split into parallel and serial implementations
-  if (!is.null(cluster)) {
+  # get output in list over chains
+  output_raw <- list()
+  for (i in 1:chains) {
     
-    # run in parallel
-    parallel::clusterEvalQ(cluster, library(drjacoby))
-    output_raw <- parallel::clusterApplyLB(cl = cluster, parallel_args, deploy_chain)
+    # index this chain
+    args_params$chain <- i
     
-  } else {
+    # make progress bars
+    pb_burnin <- txtProgressBar(min = 0, max = burnin, initial = NA, style = 3)
+    pb_samples <- txtProgressBar(min = 0, max = samples, initial = NA, style = 3)
+    args_progress <- list(pb_burnin = pb_burnin,
+                          pb_samples = pb_samples)
     
-    # run in serial
-    output_raw <- lapply(parallel_args, deploy_chain)
+    # complete list of arguments
+    args <- list(args_data = args_data,
+                 args_params = args_params,
+                 args_functions = args_functions,
+                 args_progress = args_progress)
+    
+    # run C++ function
+    output_raw[[i]] <- main_cpp(args)
   }
   
   # print total runtime
@@ -255,30 +257,6 @@ run_mcmc <- function(data,
 }
 
 #------------------------------------------------
-# deploy main_mcmc for this chain
-#' @noRd
-deploy_chain <- function(args) {
-  
-  # get parameters
-  burnin <- args$args_params$burnin
-  samples <- args$args_params$samples
-  
-  # make progress bars
-  pb_burnin <- txtProgressBar(min = 0, max = burnin, initial = NA, style = 3)
-  pb_samples <- txtProgressBar(min = 0, max = samples, initial = NA, style = 3)
-  args$args_progress <- list(pb_burnin = pb_burnin,
-                             pb_samples = pb_samples)
-  
-  # run C++ function
-  ret <- main_cpp(args)
-  
-  # remove arguments
-  rm(args)
-  
-  return(ret)
-}
-
-#------------------------------------------------
 # update progress bar
 # pb_list = list of progress bar objects
 # name = name of this progress bar
@@ -296,3 +274,35 @@ update_progress <- function(pb_list, name, i, max_i, close = TRUE) {
 
 # Deal with user input cpp not being defined
 globalVariables(c("create_xptr"))
+
+#------------------------------------------------
+get_loglike <- function(data,
+                        params) {
+  
+  # get number of weeks in control data and define weekly breaks at hourly
+  # resolution
+  data_control <- data$data_control
+  n_weeks <- ceiling(max(data_control$time.1) / 24 / 7)
+  week_breaks <- (0:n_weeks)*7*24
+  
+  # populate two lists. control_lambda_index tells us which lambda parameter
+  # values are needed for each window, and control_lambda_weight tells us the
+  # corresponding weighting of these parameters
+  control_lambda_index <- list()
+  control_lambda_weight <- list()
+  for (i in 1:nrow(data_control)) {
+    window_days <- data_control$time[i]:(data_control$time.1[i] - 1)
+    window_match <- as.numeric(cut(window_days, week_breaks, right = FALSE))
+    control_lambda_index[[i]] <- unique(window_match)
+    control_lambda_weight[[i]] <- as.vector(table(window_match))
+  }
+  
+  # data to pass to C++
+  args_data <- c(data,
+                 list(n_weeks = n_weeks,
+                      control_lambda_index = control_lambda_index,
+                      control_lambda_weight = control_lambda_weight))
+  
+  get_loglike_cpp(list(args_data = args_data,
+                       params = params))
+}

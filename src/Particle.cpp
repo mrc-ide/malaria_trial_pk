@@ -15,10 +15,18 @@ void Particle::init(System &s, double beta) {
   this->beta = beta;
   
   // parameters
-  lambda = vector<double>(s_ptr->n_weeks, 0.01);
+  lambda = vector<double>(s_ptr->n_weeks, 0.02);
   min_prob = 0.5;
   half_point = 1.0;
   hill_power = 1.5;
+  
+  // random initial conditions
+  for (size_t i = 0; i < lambda.size(); ++i) {
+    lambda[i] = R::runif(0.0, 1.0);
+  }
+  min_prob = R::runif(0.0, 1.0);
+  half_point = R::runif(0.0, 5.0);
+  hill_power = R::runif(1.0, 5.0);
   
   // intermediate objects
   drug_pow = vector<vector<double>>(s_ptr->n_ind, vector<double>(s_ptr->n_time));
@@ -223,8 +231,8 @@ void Particle::update_half_point(bool RM_on, int iteration) {
 void Particle::update_hill_power(bool RM_on, int iteration) {
   
   // propose new value
-  //double hill_power_prop = abs(R::rnorm(hill_power, bw_hill_power));
-  double hill_power_prop = rnorm1_interval(hill_power, bw_hill_power, 1.0, 20.0);
+  double hill_power_prop = abs(R::rnorm(hill_power, bw_hill_power));
+  //double hill_power_prop = rnorm1_interval(hill_power, bw_hill_power, 1.0, 20.0);
   
   // recalculate intermediate values
   recalc_drug_pow(drug_pow_prop, hill_power_prop);
@@ -318,12 +326,15 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
   for (int i = 0; i < s_ptr->n_ind; ++i) {
     fill(exp_rate[i].begin(), exp_rate[i].end(), 0.0);
     int window = 0;
-    //int week_index = 0;
+    int week_index = 0;
     for (int j = 0; j < s_ptr->n_time; ++j) {
-      int week_index = j / 7;
-      if (week_index >= lambda_.size()) {
-        week_index = lambda_.size() - 1;
-        //Rcpp::stop("rror");
+      
+      // move week window forward if needed
+      if (j == (week_index + 1)*7*24) {
+        week_index++;
+        if (week_index >= lambda_.size()) {
+          week_index = lambda_.size() - 1;
+        }
       }
       
       // move window forward if needed, or break if reached end
@@ -356,7 +367,7 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
 double Particle::get_logprior(vector<double> &lambda_, double min_prob_,
                               double half_point_, double hill_power_) {
   
-  return 0.0;
+  //return 0.0;
   
   // lognormal prior on lambdas
   double ret = 0.0;
@@ -383,4 +394,26 @@ double Particle::get_logprior(vector<double> &lambda_, double min_prob_,
   ret += R::dnorm4(hill_power_, 0.0, 2.0, true);
   
   return ret;
+}
+
+//------------------------------------------------
+double Particle::get_loglike_fromparams(Rcpp::List params) {
+  
+  // import parameter values
+  for (size_t i = 0; i < lambda.size(); ++i) {
+    lambda[i] = params[i];
+  }
+  min_prob = params["min_prob"];
+  half_point = params["half_point"];
+  hill_power = params["hill_power"];
+  
+  // populate intermediate objects
+  recalc_drug_pow(drug_pow, hill_power);
+  
+  // calculate likelihood
+  loglike_control = get_loglike_control(lambda);
+  loglike_treat = get_loglike_treat(lambda, min_prob, half_point, drug_pow);
+  loglike = loglike_control + loglike_treat;
+  
+  return loglike;
 }

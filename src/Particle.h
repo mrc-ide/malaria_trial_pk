@@ -69,4 +69,6 @@ public:
   double get_logprior(std::vector<double> &lambda_, double min_prob_,
                       double half_point_, double hill_power_);
   
+  double get_loglike_fromparams(Rcpp::List params);
+  
 };

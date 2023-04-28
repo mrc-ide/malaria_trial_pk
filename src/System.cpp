@@ -22,6 +22,9 @@ void System::load_data(Rcpp::List args_data) {
   n_ind = ind_weight.size();
   n_time = drug_conc_raw.size() / n_ind;
   
+  // unpack EIR scaling factors
+  eir_adjustment = rcpp_to_vector_double(args_data["eir_adjustment"]);
+  
   // unpack trial data
   Rcpp::List data_control = args_data["data_control"];
   control_n = rcpp_to_vector_int(data_control["n_patients"]);

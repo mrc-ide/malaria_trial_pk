@@ -19,29 +19,14 @@
 #' @param burnin the number of burn-in iterations. Automatic tuning of proposal
 #'   standard deviations is only active during the burn-in period.
 #' @param samples the number of sampling iterations.
-#' @param rungs the number of temperature rungs used in the parallel tempering
-#'   method. By default, \eqn{\beta} values are equally spaced between 0 and 1,
-#'   i.e. \eqn{\beta[i]=}\code{(i-1)/(rungs-1)} for \code{i} in \code{1:rungs}.
-#'   The likelihood for the \out{i<sup>th</sup>} heated chain is raised to the
-#'   power \eqn{\beta[i]^\alpha}, meaning we can use the \eqn{\alpha} parameter
-#'   to concentrate rungs towards the start or the end of the interval (see the
-#'   \code{alpha} argument).
-#' @param chains the number of independent replicates of the MCMC to run. If a
-#'   \code{cluster} object is defined then these chains are run in parallel,
-#'   otherwise they are run in serial.
+#' @param chains the number of independent replicates of the MCMC to run.
 #' @param beta_manual vector of manually defined \eqn{\beta} values used in the
 #'   parallel tempering approach. If defined, this overrides the spacing defined
 #'   by \code{rungs}. Note that even manually defined \eqn{\beta} values are
 #'   raised to the power \eqn{\alpha} internally, hence you should set
 #'   \code{alpha = 1} if you want to fix \eqn{\beta} values exactly.
-#' @param alpha the likelihood for the \out{i<sup>th</sup>} heated chain is
-#'   raised to the power \eqn{\beta[i]^\alpha}, meaning we can use the
-#'   \eqn{\alpha} parameter to concentrate rungs towards the start or the end of
-#'   the temperature scale.
 #' @param target_acceptance Target acceptance rate. Should be between 0 and 1.
 #'   Default of 0.44, set as optimum for unvariate proposal distributions.
-#' @param cluster option to pass in a cluster environment, allowing chains to be
-#'   run in parallel (see package "parallel").
 #' @param coupling_on whether to implement Metropolis-coupling over temperature
 #'   rungs. The option of deactivating coupling has been retained for general
 #'   interest and debugging purposes only. If this parameter is \code{FALSE}
@@ -61,10 +46,12 @@ run_mcmc <- function(data,
                      chains = 5,
                      beta_manual = 1,
                      target_acceptance = 0.44,
-                     cluster = NULL,
                      coupling_on = TRUE,
                      pb_markdown = FALSE,
                      silent = FALSE) {
+  
+  # avoid no visible binding note
+  chain <- iteration <- loglikelihood <- logprior <- phase <- NULL
   
   # ---------- check inputs ----------
   
@@ -80,9 +67,6 @@ run_mcmc <- function(data,
   assert_bounded(target_acceptance, 0, 1)
   
   # check misc parameters
-  if (!is.null(cluster)) {
-    assert_class(cluster, "cluster")
-  }
   assert_single_logical(pb_markdown)
   assert_single_logical(silent)
   
@@ -96,7 +80,9 @@ run_mcmc <- function(data,
   
   # populate two lists. control_lambda_index tells us which lambda parameter
   # values are needed for each window, and control_lambda_weight tells us the
-  # corresponding weighting of these parameters
+  # corresponding weighting of these parameters. This is because some
+  # observation windows can span multiple weeks, meaning a weighted sum of
+  # lambda values is required
   control_lambda_index <- list()
   control_lambda_weight <- list()
   for (i in 1:nrow(data_control)) {
@@ -105,6 +91,8 @@ run_mcmc <- function(data,
     control_lambda_index[[i]] <- unique(window_match)
     control_lambda_weight[[i]] <- as.vector(table(window_match))
   }
+  
+  # the eir_adjustment vector is needed in full for the treatment arm
   
   # ---------- define argument lists ----------
   
@@ -185,69 +173,36 @@ run_mcmc <- function(data,
     dplyr::bind_rows() %>%
     dplyr::mutate(chain = as.factor(chain))
   
-  # make final output object
+  # initialise final output object
   output_processed <- list(output = df_output)
-  
-  return(output_processed)
-  
   
   ## Diagnostics
   output_processed$diagnostics <- list()
   
   # run-times
-  run_time <- data.frame(chain = chain_names,
+  run_time <- data.frame(chain = 1:chains,
                          seconds = chain_runtimes)
   output_processed$diagnostics$run_time <- run_time
   
   # Rhat (Gelman-Rubin diagnostic)
   if (chains > 1) {
     rhat_est <- c()
-    for (p in seq_along(param_names)) {
-      rhat_est[p] <- df_output %>%
+    for (p in 4:19) {
+      rhat_est[p - 3] <- df_output %>%
         dplyr::filter(phase == "sampling") %>%
-        dplyr::select(chain, param_names[p]) %>%
+        dplyr::select(c(1, p)) %>%
         gelman_rubin(chains = chains, samples = samples)
     }
-    rhat_est[skip_param] <- NA
-    names(rhat_est) <- param_names
+    names(rhat_est) <- names(df_output)[4:19]
     output_processed$diagnostics$rhat <- rhat_est
   }
   
   # ESS
   ess_est <- df_output %>%
     dplyr::filter(phase == "sampling") %>%
-    dplyr::select(param_names) %>%
+    dplyr::select(-c(chain, phase, iteration, logprior, loglikelihood)) %>%
     apply(2, coda::effectiveSize)
-  ess_est[skip_param] <- NA
   output_processed$diagnostics$ess <- ess_est
-  
-  # Thermodynamic power
-  output_processed$diagnostics$rung_details <- data.frame(rung = 1:rungs,
-                                                          thermodynamic_power = beta_manual)
-  
-  # Metropolis-coupling
-  # store acceptance rates between pairs of rungs (links)
-  mc_accept <- NA
-  if (rungs > 1) {
-    
-    # MC accept
-    mc_accept <- expand.grid(link = seq_len(rungs - 1), chain = chain_names)
-    mc_accept_burnin <- unlist(lapply(output_raw, function(x){x$mc_accept_burnin})) / burnin
-    mc_accept_sampling <- unlist(lapply(output_raw, function(x){x$mc_accept_sampling})) / samples
-    mc_accept <- rbind(cbind(mc_accept, phase = "burnin", value = mc_accept_burnin),
-                       cbind(mc_accept, phase = "sampling", value = mc_accept_sampling))
-    
-  }
-  output_processed$diagnostics$mc_accept <- mc_accept
-  
-  # DIC
-  DIC <- df_pt %>%
-    dplyr::filter(.data$phase == "sampling" & .data$rung == rungs) %>%
-    dplyr::select(.data$loglikelihood) %>%
-    dplyr::mutate(deviance = -2*.data$loglikelihood) %>%
-    dplyr::summarise(DIC = mean(.data$deviance) + 0.5*var(.data$deviance)) %>%
-    dplyr::pull(.data$DIC)
-  output_processed$diagnostics$DIC_Gelman <- DIC
   
   # save output as custom class
   class(output_processed) <- "drjacoby_output"

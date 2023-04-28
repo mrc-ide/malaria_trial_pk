@@ -128,7 +128,7 @@ Rcpp::List main_cpp(Rcpp::List args) {
     
     // loop through rungs and update particles
     for (int r = 0; r < rungs; ++r) {
-      particle_vec[r].update(false, 0);
+      particle_vec[r].update(false, rep);
     }
     
     // store results

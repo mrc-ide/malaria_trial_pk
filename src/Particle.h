@@ -63,8 +63,8 @@ public:
   void update_hill_power(bool RM_on, int iteration);
   void recalc_drug_pow(std::vector<std::vector<double>> &mat, double k);
   double get_loglike_control(std::vector<double> &lambda_);
-  double get_loglike_treat(std::vector<double> &lambda_,
-                           double min_prob_, double half_point_,
+  double get_loglike_treat(std::vector<double> &lambda_, double min_prob_,
+                           double half_point_, double hill_power_, 
                            std::vector<std::vector<double>> &drug_pow_);
   double get_logprior(std::vector<double> &lambda_, double min_prob_,
                       double half_point_, double hill_power_);

@@ -45,7 +45,7 @@ void Particle::init(System &s, double beta) {
   
   // likelihoods and priors
   loglike_control = get_loglike_control(lambda);
-  loglike_treat = get_loglike_treat(lambda, min_prob, half_point, drug_pow);
+  loglike_treat = get_loglike_treat(lambda, min_prob, half_point, hill_power, drug_pow);
   loglike = loglike_control + loglike_treat;
   logprior = get_logprior(lambda, min_prob, half_point, hill_power);
   
@@ -75,7 +75,7 @@ void Particle::update_lambda(bool RM_on, int iteration) {
     
     // calculate likelihood and prior of proposed value
     double loglike_control_prop = get_loglike_control(lambda_prop);
-    double loglike_treat_prop = get_loglike_treat(lambda_prop, min_prob, half_point, drug_pow);
+    double loglike_treat_prop = get_loglike_treat(lambda_prop, min_prob, half_point, hill_power, drug_pow);
     double loglike_prop = loglike_control_prop + loglike_treat_prop;
     double logprior_prop = get_logprior(lambda_prop, min_prob, half_point, hill_power);
     
@@ -132,7 +132,7 @@ void Particle::update_min_prob(bool RM_on, int iteration) {
   double min_prob_prop = rnorm1_interval(min_prob, bw_min_prob);
   
   // calculate likelihood and prior of proposed value
-  double loglike_treat_prop = get_loglike_treat(lambda, min_prob_prop, half_point, drug_pow);
+  double loglike_treat_prop = get_loglike_treat(lambda, min_prob_prop, half_point, hill_power, drug_pow);
   double loglike_prop = loglike_control + loglike_treat_prop;
   double logprior_prop = get_logprior(lambda, min_prob_prop, half_point, hill_power);
   
@@ -174,6 +174,7 @@ void Particle::update_min_prob(bool RM_on, int iteration) {
     }
     
   } // end MH step
+  
 }
 
 //------------------------------------------------
@@ -183,7 +184,7 @@ void Particle::update_half_point(bool RM_on, int iteration) {
   double half_point_prop = abs(R::rnorm(half_point, bw_half_point));
   
   // calculate likelihood and prior of proposed value
-  double loglike_treat_prop = get_loglike_treat(lambda, min_prob, half_point_prop, drug_pow);
+  double loglike_treat_prop = get_loglike_treat(lambda, min_prob, half_point_prop, hill_power, drug_pow);
   double loglike_prop = loglike_control + loglike_treat_prop;
   double logprior_prop = get_logprior(lambda, min_prob, half_point_prop, hill_power);
   
@@ -225,6 +226,7 @@ void Particle::update_half_point(bool RM_on, int iteration) {
     }
     
   } // end MH step
+  
 }
 
 //------------------------------------------------
@@ -238,7 +240,7 @@ void Particle::update_hill_power(bool RM_on, int iteration) {
   recalc_drug_pow(drug_pow_prop, hill_power_prop);
   
   // calculate likelihood and prior of proposed value
-  double loglike_treat_prop = get_loglike_treat(lambda, min_prob, half_point, drug_pow_prop);
+  double loglike_treat_prop = get_loglike_treat(lambda, min_prob, half_point, hill_power_prop, drug_pow_prop);
   double loglike_prop = loglike_control + loglike_treat_prop;
   double logprior_prop = get_logprior(lambda, min_prob, half_point, hill_power_prop);
   
@@ -283,6 +285,7 @@ void Particle::update_hill_power(bool RM_on, int iteration) {
     }
     
   } // end MH step
+  
 }
 
 //------------------------------------------------
@@ -317,10 +320,10 @@ double Particle::get_loglike_control(vector<double> &lambda_) {
 
 //------------------------------------------------
 double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, double half_point_, 
-                                   vector<vector<double>> &drug_pow_) {
+                                   double hill_power_, vector<vector<double>> &drug_pow_) {
   //return 0.0;
   
-  double h_raised = pow(half_point_, hill_power);
+  double h_raised = pow(half_point_, hill_power_);
   
   // calculate the rate of the exponential function for each trial window
   for (int i = 0; i < s_ptr->n_ind; ++i) {
@@ -367,7 +370,7 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
 double Particle::get_logprior(vector<double> &lambda_, double min_prob_,
                               double half_point_, double hill_power_) {
   
-  //return 0.0;
+  return 0.0;
   
   // lognormal prior on lambdas
   double ret = 0.0;
@@ -383,15 +386,18 @@ double Particle::get_logprior(vector<double> &lambda_, double min_prob_,
   // beta prior on min_prob
   ret += R::dbeta(min_prob_, 1.0, 19.0, true);
   
-  // lognormal prior on half-point
-  double half_point_mean = 1.5;
-  double half_point_sd = 1.0;
-  double half_point_sigma2 = log(pow(half_point_sd / half_point_mean, 2.0) + 1.0);
-  double half_point_mu = log(half_point_mean) - half_point_sigma2 / 2.0;
-  ret += R::dlnorm(half_point_, half_point_mu, pow(half_point_sigma2, 0.5), true);
+  // lognormal prior on half_point
+  //double half_point_mean = 1.5;
+  //double half_point_sd = 1.0;
+  //double half_point_sigma2 = log(pow(half_point_sd / half_point_mean, 2.0) + 1.0);
+  //double half_point_mu = log(half_point_mean) - half_point_sigma2 / 2.0;
+  //ret += R::dlnorm(half_point_, half_point_mu, pow(half_point_sigma2, 0.5), true);
+  
+  // half-normal prior on half_point
+  ret += R::dnorm4(half_point_, 0.0, 5.0, true);
   
   // half-normal prior on hill_power
-  ret += R::dnorm4(hill_power_, 0.0, 2.0, true);
+  ret += R::dnorm4(hill_power_, 0.0, 5.0, true);
   
   return ret;
 }
@@ -412,7 +418,7 @@ double Particle::get_loglike_fromparams(Rcpp::List params) {
   
   // calculate likelihood
   loglike_control = get_loglike_control(lambda);
-  loglike_treat = get_loglike_treat(lambda, min_prob, half_point, drug_pow);
+  loglike_treat = get_loglike_treat(lambda, min_prob, half_point, hill_power, drug_pow);
   loglike = loglike_control + loglike_treat;
   
   return loglike;

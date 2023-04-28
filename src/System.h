@@ -15,6 +15,7 @@ public:
   // data
   std::vector<std::vector<double>> drug_conc;
   std::vector<double> ind_weight;
+  std::vector<double> eir_adjustment;
   int n_ind;
   int n_time;
   
@@ -28,7 +29,9 @@ public:
   std::vector<int> treat_time0;
   std::vector<int> treat_time1;
   
-  // lambda weekly weighting
+  // lambda weekly weighting. This is used in the control arm, where some weeks
+  // require a weighted sum of several lambda values (if the week spans several
+  // observation periods)
   int n_weeks;
   std::vector<std::vector<int>> control_lambda_index;
   std::vector<std::vector<double>> control_lambda_weight;

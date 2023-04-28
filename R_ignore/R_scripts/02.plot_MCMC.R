@@ -46,7 +46,7 @@ n_hours <- n_weeks * 7 * 24
 # subsample and summarise MCMC output
 
 # subsample MCMC output
-n_sub <- 1e2
+n_sub <- 1e3
 mcmc_sub <- mcmc$output %>%
   dplyr::filter(phase == "sampling") %>%
   sample_n(n_sub)
@@ -55,6 +55,7 @@ mcmc_sub <- mcmc$output %>%
 # treatment groups
 week_vec <- rep(1:n_weeks, each = 7*24)
 control_mat <- treat_mat <- matrix(NA, nrow = n_sub, ncol = n_hours)
+t0 <- Sys.time()
 for (i in 1:n_sub) {
   message(sprintf("%s of %s", i, n_sub))
   
@@ -68,6 +69,7 @@ for (i in 1:n_sub) {
   exp_rate_cumsum <- t(apply(exp_rate, 1, cumsum))
   treat_mat[i,] <- 542*(1 - colSums(w_combined * exp(-exp_rate_cumsum)))
 }
+Sys.time() - t0
 
 # summarise into quantiles and get into data.frame
 control_q95 <- t(apply(control_mat, 2, quantile_95))

@@ -13,7 +13,7 @@ Rcpp::List main_cpp(Rcpp::List args) {
   // start timer
   chrono::high_resolution_clock::time_point t0 = chrono::high_resolution_clock::now();
   
-  // create sytem object and load args
+  // create system object and load args
   System s;
   s.load_data(args["args_data"]);
   s.load_params(args["args_params"]);

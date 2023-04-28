@@ -17,20 +17,19 @@ hill_func <- function(x, min_prob, half_point, hill_power) {
 # read in and process data
 
 # read in MCMC output
-mcmc <- readRDS("R_ignore/outputs/mcmc_raw.rds")
+mcmc <- readRDS("ignore/outputs/mcmc_raw.rds")
 
 # read in trial data
-dat_trial <- read.csv("R_ignore/data/cisse_data.csv")
+dat_trial <- read.csv("data/cisse_data.csv")
 
 # read in drug concentration data
-dat_drug <- readRDS("R_ignore/data/quadrature_pk.rds")
+dat_drug <- readRDS("data/quadrature_pk.rds")
 
 # get weight of each group*quadrature combination
 w_combined <- dat_drug %>%
   dplyr::filter(time == 0) %>%
   mutate(w = weighting * pop_prop) %>%
   pull(w)
-w_combined <- w_combined / sum(w_combined)
 
 # get drug concentrations into simple matrix
 n_ind <- length(w_combined)
@@ -46,7 +45,7 @@ n_hours <- n_weeks * 7 * 24
 # subsample and summarise MCMC output
 
 # subsample MCMC output
-n_sub <- 1e3
+n_sub <- 1e1
 mcmc_sub <- mcmc$output %>%
   dplyr::filter(phase == "sampling") %>%
   sample_n(n_sub)
@@ -78,7 +77,7 @@ colnames(control_q95) <- sprintf("control_%s", colnames(control_q95))
 treat_q95 <- t(apply(treat_mat, 2, quantile_95))
 colnames(treat_q95) <- sprintf("treat_%s", colnames(treat_q95))
 
-df_model <- data.frame(time = t_vec) %>%
+df_model <- data.frame(time = 0:(nrow(control_q95) - 1)) %>%
   bind_cols(control_q95) %>%
   bind_cols(treat_q95)
 

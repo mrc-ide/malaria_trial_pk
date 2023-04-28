@@ -105,7 +105,6 @@ run_mcmc <- function(data,
   # parameters to pass to C++
   args_params <- list(burnin = burnin,
                       samples = samples,
-                      rungs = rungs,
                       coupling_on = coupling_on,
                       beta = beta_manual,
                       pb_markdown = pb_markdown,

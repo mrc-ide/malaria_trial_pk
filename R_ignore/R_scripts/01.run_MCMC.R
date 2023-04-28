@@ -45,12 +45,12 @@ dat_treat <- dat_trial %>%
 set.seed(1)
 mcmc <- run_mcmc(data = list(data_drug = dat_drug,
                              ind_weight = w_combined,
+                             eir_adjustment = eir_adjustment,
                              data_control = dat_control,
-                             data_treat = dat_treat,
-                             eir_adjustment = eir_adjustment),
-                 burnin = 3,#1e3,
-                 samples = 3,#5e3,
-                 chains = 1)#10)
+                             data_treat = dat_treat),
+                 burnin = 10,#1e3,
+                 samples = 10,#5e3,
+                 chains = 1)#10) ## takes approx 11 hours for full run (10 chains, commented itrts)
 
 
 # --------------------------
@@ -58,7 +58,7 @@ mcmc <- run_mcmc(data = list(data_drug = dat_drug,
 
 # trace plots
 mcmc$output %>%
-  dplyr::filter(phase == "sampling") %>%
+  # dplyr::filter(phase == "sampling") %>%
   dplyr::select(-c(phase, logprior, loglikelihood)) %>%
   pivot_longer(cols = -c(chain, iteration), names_to = "parameter", values_to = "value") %>%
   mutate(parameter = factor(parameter, levels = c(sprintf("lambda_%s", 1:13), "min_prob", "half_point", "hill_power"))) %>%
@@ -93,7 +93,7 @@ cowplot::plot_grid(plot1, plot2)
 # save output to file
 
 if (FALSE) {
-  saveRDS(mcmc, file = "R_ignore/outputs/mcmc_raw.rds")
+  saveRDS(mcmc, file = "ignore/outputs/mcmc_raw.rds")
 }
 
 

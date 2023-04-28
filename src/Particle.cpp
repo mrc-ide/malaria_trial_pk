@@ -310,8 +310,8 @@ double Particle::get_loglike_control(vector<double> &lambda_) {
     for (size_t j = 0; j < s_ptr->control_lambda_index[i].size(); ++j) {
       int lambda_index = s_ptr->control_lambda_index[i][j] - 1;
       r += lambda_[lambda_index] / 24 * s_ptr->control_lambda_weight[i][j];
-    }
-    double p_sus = exp(-r);
+    } // summing according to how the data points fall within lambda windows
+    double p_sus = exp(-r); // prob sus
     ret += R::dbinom(s_ptr->control_n_inf[i], s_ptr->control_n[i], 1.0 - p_sus, true);
   }
   
@@ -325,7 +325,8 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
   
   double h_raised = pow(half_point_, hill_power_);
   
-  // calculate the rate of the exponential function for each trial window
+  // calculate the rate of the exponential function for each trial window 
+  // over every time step because the hill function adapts susceptibility hour on hour
   for (int i = 0; i < s_ptr->n_ind; ++i) {
     fill(exp_rate[i].begin(), exp_rate[i].end(), 0.0);
     int window = 0;
@@ -340,7 +341,7 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
         }
       }
       
-      // move window forward if needed, or break if reached end
+      // move window forward if needed, or break if reached end [time, time.1]
       if (j == s_ptr->treat_time1[window]) {
         window++;
         if (window == s_ptr->treat_n.size()) {

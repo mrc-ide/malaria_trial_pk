@@ -45,9 +45,9 @@ dat_treat <- dat_trial %>%
 set.seed(1)
 mcmc <- run_mcmc(data = list(data_drug = dat_drug,
                              ind_weight = w_combined,
-                             eir_adjustment = eir_adjustment,
                              data_control = dat_control,
-                             data_treat = dat_treat),
+                             data_treat = dat_treat,
+                             eir_adjustment = eir_adjustment),
                  burnin = 10,#1e3,
                  samples = 10,#5e3,
                  chains = 1)#10) ## takes approx 11 hours for full run (10 chains, commented itrts)

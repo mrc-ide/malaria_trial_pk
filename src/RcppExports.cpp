@@ -21,9 +21,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// get_loglike_cpp
+double get_loglike_cpp(Rcpp::List args);
+RcppExport SEXP _malariatrialpk_get_loglike_cpp(SEXP argsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::List >::type args(argsSEXP);
+    rcpp_result_gen = Rcpp::wrap(get_loglike_cpp(args));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_malariatrialpk_main_cpp", (DL_FUNC) &_malariatrialpk_main_cpp, 1},
+    {"_malariatrialpk_get_loglike_cpp", (DL_FUNC) &_malariatrialpk_get_loglike_cpp, 1},
     {NULL, NULL, 0}
 };
 

@@ -20,18 +20,20 @@ public:
   double beta;
   
   // parameters
-  double lambda;
+  std::vector<double> lambda;
   double min_prob;
   double half_point;
   double hill_power;
   
-  // intermediate objects
-  std::vector<std::vector<double>> drug_pow;
-  std::vector<std::vector<double>> drug_pow_prop;
-  std::vector<std::vector<double>> sum_hill_unscaled;
-  std::vector<std::vector<double>> sum_hill_unscaled_prop;
   
-  // proposal parameters
+  // intermediate objects
+  std::vector<std::vector<double>> drug_pow; // this is concentration ^ power (not c50)
+  std::vector<std::vector<double>> drug_pow_prop; // proposed conc ^ power (if k changes)
+  // if we accept the move in k then drug pow prop becomes drug pow
+  std::vector<std::vector<double>> exp_rate; // empty matrix structure 
+
+  
+  // proposal parameters -- x' - x ~ N(0, bandwidth) [x = current pos, x' = proposal]
   double bw_lambda;
   double bw_min_prob;
   double bw_half_point;
@@ -63,12 +65,13 @@ public:
   void update_half_point(bool RM_on, int iteration);
   void update_hill_power(bool RM_on, int iteration);
   void recalc_drug_pow(std::vector<std::vector<double>> &mat, double k);
-  void recalc_sum_hill_unscaled(std::vector<std::vector<double>> &mat, double h,
-                                std::vector<std::vector<double>> &drug_pow_);
-  double get_loglike_control(double lambda_);
-  double get_loglike_treat(double lambda_, double min_prob_,
-                           std::vector<std::vector<double>> &sum_hill_unscaled_);
-  double get_logprior(double lambda_, double min_prob_,
+  double get_loglike_control(std::vector<double> &lambda_);
+  double get_loglike_treat(std::vector<double> &lambda_, double min_prob_,
+                           double half_point_, double hill_power_, 
+                           std::vector<std::vector<double>> &drug_pow_);
+  double get_logprior(std::vector<double> &lambda_, double min_prob_,
                       double half_point_, double hill_power_);
+  
+  double get_loglike_fromparams(Rcpp::List params);
   
 };

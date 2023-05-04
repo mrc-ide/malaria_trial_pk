@@ -19,29 +19,14 @@
 #' @param burnin the number of burn-in iterations. Automatic tuning of proposal
 #'   standard deviations is only active during the burn-in period.
 #' @param samples the number of sampling iterations.
-#' @param rungs the number of temperature rungs used in the parallel tempering
-#'   method. By default, \eqn{\beta} values are equally spaced between 0 and 1,
-#'   i.e. \eqn{\beta[i]=}\code{(i-1)/(rungs-1)} for \code{i} in \code{1:rungs}.
-#'   The likelihood for the \out{i<sup>th</sup>} heated chain is raised to the
-#'   power \eqn{\beta[i]^\alpha}, meaning we can use the \eqn{\alpha} parameter
-#'   to concentrate rungs towards the start or the end of the interval (see the
-#'   \code{alpha} argument).
-#' @param chains the number of independent replicates of the MCMC to run. If a
-#'   \code{cluster} object is defined then these chains are run in parallel,
-#'   otherwise they are run in serial.
+#' @param chains the number of independent replicates of the MCMC to run.
 #' @param beta_manual vector of manually defined \eqn{\beta} values used in the
 #'   parallel tempering approach. If defined, this overrides the spacing defined
 #'   by \code{rungs}. Note that even manually defined \eqn{\beta} values are
 #'   raised to the power \eqn{\alpha} internally, hence you should set
 #'   \code{alpha = 1} if you want to fix \eqn{\beta} values exactly.
-#' @param alpha the likelihood for the \out{i<sup>th</sup>} heated chain is
-#'   raised to the power \eqn{\beta[i]^\alpha}, meaning we can use the
-#'   \eqn{\alpha} parameter to concentrate rungs towards the start or the end of
-#'   the temperature scale.
 #' @param target_acceptance Target acceptance rate. Should be between 0 and 1.
 #'   Default of 0.44, set as optimum for unvariate proposal distributions.
-#' @param cluster option to pass in a cluster environment, allowing chains to be
-#'   run in parallel (see package "parallel").
 #' @param coupling_on whether to implement Metropolis-coupling over temperature
 #'   rungs. The option of deactivating coupling has been retained for general
 #'   interest and debugging purposes only. If this parameter is \code{FALSE}
@@ -61,10 +46,12 @@ run_mcmc <- function(data,
                      chains = 5,
                      beta_manual = 1,
                      target_acceptance = 0.44,
-                     cluster = NULL,
                      coupling_on = TRUE,
                      pb_markdown = FALSE,
                      silent = FALSE) {
+  
+  # avoid no visible binding note
+  chain <- iteration <- loglikelihood <- logprior <- phase <- NULL
   
   # ---------- check inputs ----------
   
@@ -80,18 +67,49 @@ run_mcmc <- function(data,
   assert_bounded(target_acceptance, 0, 1)
   
   # check misc parameters
-  if (!is.null(cluster)) {
-    assert_class(cluster, "cluster")
-  }
   assert_single_logical(pb_markdown)
   assert_single_logical(silent)
   
+  # ---------- pre-processing ----------
+  
+  # get number of weeks in control data and define weekly breaks at hourly
+  # resolution
+  data_control <- data$data_control
+  n_weeks <- ceiling(max(data_control$time.1) / 24 / 7)
+  week_breaks <- (0:n_weeks)*7*24
+  
+  # populate two lists. control_lambda_index tells us which lambda parameter
+  # values are needed for each window, and control_lambda_weight tells us the
+  # corresponding weighting of these parameters. This is because some
+  # observation windows can span multiple weeks, meaning a weighted sum of
+  # lambda values is required
+  control_lambda_index <- list()
+  control_lambda_weight <- list()
+  for (i in 1:nrow(data_control)) {
+    window_days <- data_control$time[i]:(data_control$time.1[i] - 1)
+    window_match <- as.numeric(cut(window_days, week_breaks, right = FALSE))
+    control_lambda_index[[i]] <- unique(window_match)
+    control_lambda_weight[[i]] <- as.vector(table(window_match))
+  }
+  
+  # the eir_adjustment vector is needed in full for the treatment arm, but for
+  # the control arm we just need the unique values in this vector and their
+  # corresponding weights
+  eir_unique <- unique(eir_adjustment)
+  eir_weight <- mapply(sum, split(ind_weight, f = match(eir_adjustment, eir_unique)))
   
   # ---------- define argument lists ----------
   
+  # data to pass to C++
+  args_data <- c(data,
+                 list(n_weeks = n_weeks,
+                      control_lambda_index = control_lambda_index,
+                      control_lambda_weight = control_lambda_weight,
+                      eir_unique = eir_unique,
+                      eir_weight = eir_weight))
+  
   # parameters to pass to C++
-  args_params <- list(data = data,
-                      burnin = burnin,
+  args_params <- list(burnin = burnin,
                       samples = samples,
                       rungs = rungs,
                       coupling_on = coupling_on,
@@ -103,30 +121,30 @@ run_mcmc <- function(data,
   # functions to pass to C++
   args_functions <- list(update_progress = update_progress)
   
-  # complete list of arguments
-  args <- list(args_params = args_params,
-               args_functions = args_functions)
-  
-  # create distinct argument sets over chains
-  parallel_args <- replicate(chains, args, simplify = FALSE)
-  for (i in 1:chains) {
-    parallel_args[[i]]$args_params$chain <- i
-  }
-  
   
   # ---------- run MCMC ----------
   
-  # split into parallel and serial implementations
-  if (!is.null(cluster)) {
+  # get output in list over chains
+  output_raw <- list()
+  for (i in 1:chains) {
     
-    # run in parallel
-    parallel::clusterEvalQ(cluster, library(drjacoby))
-    output_raw <- parallel::clusterApplyLB(cl = cluster, parallel_args, deploy_chain)
+    # index this chain
+    args_params$chain <- i
     
-  } else {
+    # make progress bars
+    pb_burnin <- txtProgressBar(min = 0, max = burnin, initial = NA, style = 3)
+    pb_samples <- txtProgressBar(min = 0, max = samples, initial = NA, style = 3)
+    args_progress <- list(pb_burnin = pb_burnin,
+                          pb_samples = pb_samples)
     
-    # run in serial
-    output_raw <- lapply(parallel_args, deploy_chain)
+    # complete list of arguments
+    args <- list(args_data = args_data,
+                 args_params = args_params,
+                 args_functions = args_functions,
+                 args_progress = args_progress)
+    
+    # run C++ function
+    output_raw[[i]] <- main_cpp(args)
   }
   
   # print total runtime
@@ -142,112 +160,61 @@ run_mcmc <- function(data,
   
   # make main output data.frame
   df_output <- mapply(function(i) {
+    
+    # process lambda values
+    lambda_mat <- matrix(unlist(output_raw[[i]]$lambda), ncol = n_weeks, byrow = TRUE)
+    colnames(lambda_mat) <- sprintf("lambda_%s", 1:n_weeks)
+    
+    # combine with other output
     data.frame(chain = i,
                phase = c(rep("burnin", burnin), rep("sampling", samples)),
-               iteration = 1:(burnin + samples),
-               lambda = output_raw[[i]]$lambda,
-               min_prob = output_raw[[i]]$min_prob,
-               half_point = output_raw[[i]]$half_point,
-               hill_power = output_raw[[i]]$hill_power,
-               logprior = output_raw[[i]]$logprior,
-               loglikelihood = output_raw[[i]]$loglike)
+               iteration = 1:(burnin + samples)) %>%
+      bind_cols(lambda_mat) %>%
+      bind_cols(data.frame(min_prob = output_raw[[i]]$min_prob,
+                           half_point = output_raw[[i]]$half_point,
+                           hill_power = output_raw[[i]]$hill_power,
+                           logprior = output_raw[[i]]$logprior,
+                           loglikelihood = output_raw[[i]]$loglike))
   }, seq_along(output_raw), SIMPLIFY = FALSE) %>%
     dplyr::bind_rows() %>%
     dplyr::mutate(chain = as.factor(chain))
   
-  return(df_output)
-  
-  # append to output list
-  output_processed <- list(output = df_output,
-                           pt = df_pt)
+  # initialise final output object
+  output_processed <- list(output = df_output)
   
   ## Diagnostics
   output_processed$diagnostics <- list()
   
   # run-times
-  run_time <- data.frame(chain = chain_names,
+  run_time <- data.frame(chain = 1:chains,
                          seconds = chain_runtimes)
   output_processed$diagnostics$run_time <- run_time
   
   # Rhat (Gelman-Rubin diagnostic)
   if (chains > 1) {
     rhat_est <- c()
-    for (p in seq_along(param_names)) {
-      rhat_est[p] <- df_output %>%
+    for (p in 4:19) {
+      rhat_est[p - 3] <- df_output %>%
         dplyr::filter(phase == "sampling") %>%
-        dplyr::select(chain, param_names[p]) %>%
+        dplyr::select(c(1, p)) %>%
         gelman_rubin(chains = chains, samples = samples)
     }
-    rhat_est[skip_param] <- NA
-    names(rhat_est) <- param_names
+    names(rhat_est) <- names(df_output)[4:19]
     output_processed$diagnostics$rhat <- rhat_est
   }
   
   # ESS
   ess_est <- df_output %>%
     dplyr::filter(phase == "sampling") %>%
-    dplyr::select(param_names) %>%
+    dplyr::select(-c(chain, phase, iteration, logprior, loglikelihood)) %>%
     apply(2, coda::effectiveSize)
-  ess_est[skip_param] <- NA
   output_processed$diagnostics$ess <- ess_est
-  
-  # Thermodynamic power
-  output_processed$diagnostics$rung_details <- data.frame(rung = 1:rungs,
-                                                          thermodynamic_power = beta_manual)
-  
-  # Metropolis-coupling
-  # store acceptance rates between pairs of rungs (links)
-  mc_accept <- NA
-  if (rungs > 1) {
-    
-    # MC accept
-    mc_accept <- expand.grid(link = seq_len(rungs - 1), chain = chain_names)
-    mc_accept_burnin <- unlist(lapply(output_raw, function(x){x$mc_accept_burnin})) / burnin
-    mc_accept_sampling <- unlist(lapply(output_raw, function(x){x$mc_accept_sampling})) / samples
-    mc_accept <- rbind(cbind(mc_accept, phase = "burnin", value = mc_accept_burnin),
-                       cbind(mc_accept, phase = "sampling", value = mc_accept_sampling))
-    
-  }
-  output_processed$diagnostics$mc_accept <- mc_accept
-  
-  # DIC
-  DIC <- df_pt %>%
-    dplyr::filter(.data$phase == "sampling" & .data$rung == rungs) %>%
-    dplyr::select(.data$loglikelihood) %>%
-    dplyr::mutate(deviance = -2*.data$loglikelihood) %>%
-    dplyr::summarise(DIC = mean(.data$deviance) + 0.5*var(.data$deviance)) %>%
-    dplyr::pull(.data$DIC)
-  output_processed$diagnostics$DIC_Gelman <- DIC
   
   # save output as custom class
   class(output_processed) <- "drjacoby_output"
   
   # return
   return(output_processed)
-}
-
-#------------------------------------------------
-# deploy main_mcmc for this chain
-#' @noRd
-deploy_chain <- function(args) {
-  
-  # get parameters
-  burnin <- args$args_params$burnin
-  samples <- args$args_params$samples
-  
-  # make progress bars
-  pb_burnin <- txtProgressBar(min = 0, max = burnin, initial = NA, style = 3)
-  pb_samples <- txtProgressBar(min = 0, max = samples, initial = NA, style = 3)
-  args$args_progress <- list(pb_burnin = pb_burnin,
-                             pb_samples = pb_samples)
-  
-  # run C++ function
-  ret <- main_cpp(args)
-  
-  # remove arguments
-  rm(args)
-  
-  return(ret)
 }
 
 #------------------------------------------------
@@ -268,3 +235,35 @@ update_progress <- function(pb_list, name, i, max_i, close = TRUE) {
 
 # Deal with user input cpp not being defined
 globalVariables(c("create_xptr"))
+
+#------------------------------------------------
+get_loglike <- function(data,
+                        params) {
+  
+  # get number of weeks in control data and define weekly breaks at hourly
+  # resolution
+  data_control <- data$data_control
+  n_weeks <- ceiling(max(data_control$time.1) / 24 / 7)
+  week_breaks <- (0:n_weeks)*7*24
+  
+  # populate two lists. control_lambda_index tells us which lambda parameter
+  # values are needed for each window, and control_lambda_weight tells us the
+  # corresponding weighting of these parameters
+  control_lambda_index <- list()
+  control_lambda_weight <- list()
+  for (i in 1:nrow(data_control)) {
+    window_days <- data_control$time[i]:(data_control$time.1[i] - 1)
+    window_match <- as.numeric(cut(window_days, week_breaks, right = FALSE))
+    control_lambda_index[[i]] <- unique(window_match)
+    control_lambda_weight[[i]] <- as.vector(table(window_match))
+  }
+  
+  # data to pass to C++
+  args_data <- c(data,
+                 list(n_weeks = n_weeks,
+                      control_lambda_index = control_lambda_index,
+                      control_lambda_weight = control_lambda_weight))
+  
+  get_loglike_cpp(list(args_data = args_data,
+                       params = params))
+}

@@ -13,9 +13,10 @@ Rcpp::List main_cpp(Rcpp::List args) {
   // start timer
   chrono::high_resolution_clock::time_point t0 = chrono::high_resolution_clock::now();
   
-  // create sytem object and load args
+  // create system object and load args
   System s;
-  s.load(args);
+  s.load_data(args["args_data"]);
+  s.load_params(args["args_params"]);
   
   // extract R utility functions that will be called from within MCMC
   Rcpp::List args_functions = args["args_functions"];
@@ -37,7 +38,7 @@ Rcpp::List main_cpp(Rcpp::List args) {
   // objects for storing loglikelihood parameters
   vector<double> loglike(s.burnin + s.samples);
   vector<double> logprior(s.burnin + s.samples);
-  vector<double> lambda(s.burnin + s.samples);
+  vector<vector<double>> lambda(s.burnin + s.samples);
   vector<double> min_prob(s.burnin + s.samples);
   vector<double> half_point(s.burnin + s.samples);
   vector<double> hill_power(s.burnin + s.samples);
@@ -127,7 +128,7 @@ Rcpp::List main_cpp(Rcpp::List args) {
     
     // loop through rungs and update particles
     for (int r = 0; r < rungs; ++r) {
-      particle_vec[r].update(false, 0);
+      particle_vec[r].update(false, rep);
     }
     
     // store results
@@ -218,11 +219,11 @@ void coupling(vector<Particle> &particle_vec, vector<int> &mc_accept) {
     if (accept_move) {
       
       // swap parameter values
-      double tmp = particle_vec[rung1].lambda;
+      vector<double> tmp_vec = particle_vec[rung1].lambda;
       particle_vec[rung1].lambda = particle_vec[rung2].lambda;
-      particle_vec[rung2].lambda = tmp;
+      particle_vec[rung2].lambda = tmp_vec;
       
-      tmp = particle_vec[rung1].min_prob;
+      double tmp = particle_vec[rung1].min_prob;
       particle_vec[rung1].min_prob = particle_vec[rung2].min_prob;
       particle_vec[rung2].min_prob = tmp;
       
@@ -250,3 +251,19 @@ void coupling(vector<Particle> &particle_vec, vector<int> &mc_accept) {
   }  // end loop over rungs
 }
 
+//------------------------------------------------
+// return loglikelihood
+double get_loglike_cpp(Rcpp::List args) {
+  
+  // create sytem object and load data only
+  System s;
+  s.load_data(args["args_data"]);
+  
+  // create single particle and initialise
+  Particle p;
+  p.init(s, 1.0);
+  
+  // get likelihood
+  double ret = p.get_loglike_fromparams(args["params"]);
+  return ret;
+}

@@ -233,8 +233,8 @@ void Particle::update_half_point(bool RM_on, int iteration) {
 void Particle::update_hill_power(bool RM_on, int iteration) {
   
   // propose new value
-  double hill_power_prop = abs(R::rnorm(hill_power, bw_hill_power));
-  //double hill_power_prop = rnorm1_interval(hill_power, bw_hill_power, 1.0, 20.0);
+  // double hill_power_prop = abs(R::rnorm(hill_power, bw_hill_power));
+  double hill_power_prop = rnorm1_interval(hill_power, bw_hill_power, 1.0, 20.0);
   
   // recalculate intermediate values
   recalc_drug_pow(drug_pow_prop, hill_power_prop);
@@ -311,7 +311,10 @@ double Particle::get_loglike_control(vector<double> &lambda_) {
       int lambda_index = s_ptr->control_lambda_index[i][j] - 1;
       r += lambda_[lambda_index] / 24 * s_ptr->control_lambda_weight[i][j];
     }
-    double p_sus = exp(-r);
+    double p_sus = 0.0;
+    for (size_t j = 0; j < s_ptr->eir_unique.size(); ++j) {
+      p_sus += s_ptr->eir_weight[j]*exp(- s_ptr->eir_unique[j]*r);
+    }
     ret += R::dbinom(s_ptr->control_n_inf[i], s_ptr->control_n[i], 1.0 - p_sus, true);
   }
   
@@ -340,7 +343,7 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
         }
       }
       
-      // move window forward if needed, or break if reached end
+      // move observation window forward if needed, or break if reached end
       if (j == s_ptr->treat_time1[window]) {
         window++;
         if (window == s_ptr->treat_n.size()) {
@@ -348,6 +351,7 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
         }
       }
       
+      // add to rate of exponential for this observation window
       double hill = min_prob_ + (1.0 - min_prob_) * h_raised / (h_raised + drug_pow_[i][j]);
       exp_rate[i][window] += lambda_[week_index] / 24 * hill;
     }
@@ -358,7 +362,7 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
   for (size_t t = 0; t < s_ptr->treat_n.size(); ++t) {
     double p_sus = 0.0;
     for (int i = 0; i < s_ptr->n_ind; ++i) {
-      p_sus += s_ptr->ind_weight[i] * exp(-exp_rate[i][t]);
+      p_sus += s_ptr->ind_weight[i] * exp(- s_ptr->eir_adjustment[i] * exp_rate[i][t]);
     }
     ret += R::dbinom(s_ptr->treat_n_inf[t], s_ptr->treat_n[t], 1.0 - p_sus, true);
   }

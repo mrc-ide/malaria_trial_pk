@@ -92,7 +92,11 @@ run_mcmc <- function(data,
     control_lambda_weight[[i]] <- as.vector(table(window_match))
   }
   
-  # the eir_adjustment vector is needed in full for the treatment arm
+  # the eir_adjustment vector is needed in full for the treatment arm, but for
+  # the control arm we just need the unique values in this vector and their
+  # corresponding weights
+  eir_unique <- unique(eir_adjustment)
+  eir_weight <- mapply(sum, split(ind_weight, f = match(eir_adjustment, eir_unique)))
   
   # ---------- define argument lists ----------
   
@@ -100,7 +104,9 @@ run_mcmc <- function(data,
   args_data <- c(data,
                  list(n_weeks = n_weeks,
                       control_lambda_index = control_lambda_index,
-                      control_lambda_weight = control_lambda_weight))
+                      control_lambda_weight = control_lambda_weight,
+                      eir_unique = eir_unique,
+                      eir_weight = eir_weight))
   
   # parameters to pass to C++
   args_params <- list(burnin = burnin,

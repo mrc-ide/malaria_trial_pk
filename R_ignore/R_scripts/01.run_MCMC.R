@@ -48,8 +48,8 @@ mcmc <- run_mcmc(data = list(data_drug = dat_drug,
                              data_control = dat_control,
                              data_treat = dat_treat,
                              eir_adjustment = eir_adjustment),
-                 burnin = 3,#1e3,
-                 samples = 3,#5e3,
+                 burnin = 1e3,#1e3,
+                 samples = 1e3,#5e3,
                  chains = 1)#10)
 
 
@@ -93,7 +93,7 @@ cowplot::plot_grid(plot1, plot2)
 # save output to file
 
 if (FALSE) {
-  saveRDS(mcmc, file = "R_ignore/outputs/mcmc_raw.rds")
+  saveRDS(mcmc, file = "ignore/outputs/mcmc_raw.rds")
 }
 
 

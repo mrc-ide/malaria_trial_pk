@@ -16,6 +16,8 @@ public:
   std::vector<std::vector<double>> drug_conc;
   std::vector<double> ind_weight;
   std::vector<double> eir_adjustment;
+  std::vector<double> eir_unique;
+  std::vector<double> eir_weight;
   int n_ind;
   int n_time;
   

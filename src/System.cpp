@@ -24,6 +24,8 @@ void System::load_data(Rcpp::List args_data) {
   
   // unpack EIR scaling factors
   eir_adjustment = rcpp_to_vector_double(args_data["eir_adjustment"]);
+  eir_unique = rcpp_to_vector_double(args_data["eir_unique"]);
+  eir_weight = rcpp_to_vector_double(args_data["eir_weight"]);
   
   // unpack trial data
   Rcpp::List data_control = args_data["data_control"];

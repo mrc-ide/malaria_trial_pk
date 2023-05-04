@@ -25,12 +25,15 @@ public:
   double half_point;
   double hill_power;
   
-  // intermediate objects
-  std::vector<std::vector<double>> drug_pow;
-  std::vector<std::vector<double>> drug_pow_prop;
-  std::vector<std::vector<double>> exp_rate;
   
-  // proposal parameters
+  // intermediate objects
+  std::vector<std::vector<double>> drug_pow; // this is concentration ^ power (not c50)
+  std::vector<std::vector<double>> drug_pow_prop; // proposed conc ^ power (if k changes)
+  // if we accept the move in k then drug pow prop becomes drug pow
+  std::vector<std::vector<double>> exp_rate; // empty matrix structure 
+
+  
+  // proposal parameters -- x' - x ~ N(0, bandwidth) [x = current pos, x' = proposal]
   double bw_lambda;
   double bw_min_prob;
   double bw_half_point;

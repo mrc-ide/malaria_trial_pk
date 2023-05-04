@@ -328,7 +328,8 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
   
   double h_raised = pow(half_point_, hill_power_);
   
-  // calculate the rate of the exponential function for each trial window
+  // calculate the rate of the exponential function for each trial window 
+  // over every time step because the hill function adapts susceptibility hour on hour
   for (int i = 0; i < s_ptr->n_ind; ++i) {
     fill(exp_rate[i].begin(), exp_rate[i].end(), 0.0);
     int window = 0;
@@ -343,7 +344,7 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
         }
       }
       
-      // move observation window forward if needed, or break if reached end
+      // move window forward if needed, or break if reached end [time, time.1]
       if (j == s_ptr->treat_time1[window]) {
         window++;
         if (window == s_ptr->treat_n.size()) {

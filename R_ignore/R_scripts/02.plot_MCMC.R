@@ -92,7 +92,7 @@ colnames(control_q95) <- sprintf("control_%s", colnames(control_q95))
 treat_q95 <- t(apply(treat_mat, 2, quantile_95))
 colnames(treat_q95) <- sprintf("treat_%s", colnames(treat_q95))
 
-df_model <- data.frame(time = t_vec) %>%
+df_model <- data.frame(time = 0:(nrow(control_q95) - 1)) %>%
   bind_cols(control_q95) %>%
   bind_cols(treat_q95)
 

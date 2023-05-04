@@ -48,9 +48,9 @@ mcmc <- run_mcmc(data = list(data_drug = dat_drug,
                              data_control = dat_control,
                              data_treat = dat_treat,
                              eir_adjustment = eir_adjustment),
-                 burnin = 1e3,#1e3,
-                 samples = 1e3,#5e3,
-                 chains = 1)#10)
+                 burnin = 1e3,
+                 samples = 5e3,
+                 chains = 10)
 
 
 # --------------------------
@@ -58,7 +58,7 @@ mcmc <- run_mcmc(data = list(data_drug = dat_drug,
 
 # trace plots
 mcmc$output %>%
-  dplyr::filter(phase == "sampling") %>%
+  # dplyr::filter(phase == "sampling") %>%
   dplyr::select(-c(phase, logprior, loglikelihood)) %>%
   pivot_longer(cols = -c(chain, iteration), names_to = "parameter", values_to = "value") %>%
   mutate(parameter = factor(parameter, levels = c(sprintf("lambda_%s", 1:13), "min_prob", "half_point", "hill_power"))) %>%
@@ -88,6 +88,7 @@ plot2 <- df_quantile %>%
   geom_errorbar(aes(xmin = Q2.5, xmax = Q97.5, y = names)) +
   xlab("Value") + xlab("Parameter")
 cowplot::plot_grid(plot1, plot2)
+
 
 # --------------------------
 # save output to file

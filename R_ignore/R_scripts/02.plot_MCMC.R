@@ -59,6 +59,7 @@ mcmc_sub <- mcmc$output %>%
   dplyr::filter(phase == "sampling") %>%
   sample_n(n_sub)
 
+
 # for each random sample, calculate prob. uninfected in both control and
 # treatment groups
 week_vec <- rep(1:n_weeks, each = 7*24)
@@ -113,7 +114,7 @@ dat_trial %>%
   geom_ribbon(aes(x = time / 24, ymin = treat_Q2.5, ymax = treat_Q97.5),
               alpha = 0.2, fill = "blue", data = df_model) +
   geom_line(aes(x = time / 24, y = treat_Q50), alpha = 0.2, col = "blue", data = df_model) +
-  geom_step(aes(x = time / 24, y = n_infected, col = treat_arm), direction = "hv") +
+  #geom_step(aes(x = time / 24, y = n_infected, col = treat_arm), direction = "hv") +
   geom_point(aes(x = time / 24, y = n_infected, col = treat_arm), size = 0.8) +
   xlab("Time (days)") + ylab("Number infected")
 

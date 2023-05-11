@@ -48,17 +48,16 @@ mcmc <- run_mcmc(data = list(data_drug = dat_drug,
                              data_control = dat_control,
                              data_treat = dat_treat,
                              eir_adjustment = eir_adjustment),
-                 burnin = 1e3,
-                 samples = 5e3,
-                 chains = 10)
-
+                 burnin = 10,#1e3,
+                 samples = 10,#5e3,
+                 chains = 1)#10)
 
 # --------------------------
 # exploratory plots
 
 # trace plots
 mcmc$output %>%
-  # dplyr::filter(phase == "sampling") %>%
+  #dplyr::filter(phase == "sampling") %>%
   dplyr::select(-c(phase, logprior, loglikelihood)) %>%
   pivot_longer(cols = -c(chain, iteration), names_to = "parameter", values_to = "value") %>%
   mutate(parameter = factor(parameter, levels = c(sprintf("lambda_%s", 1:13), "min_prob", "half_point", "hill_power"))) %>%

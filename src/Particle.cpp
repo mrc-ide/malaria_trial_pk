@@ -329,7 +329,8 @@ double Particle::get_loglike_treat(vector<double> &lambda_, double min_prob_, do
   double h_raised = pow(half_point_, hill_power_);
   
   // calculate the rate of the exponential function for each trial window 
-  // over every time step because the hill function adapts susceptibility hour on hour
+  // over every time step because the hill function adapts susceptibility hour
+  // on hour
   for (int i = 0; i < s_ptr->n_ind; ++i) {
     fill(exp_rate[i].begin(), exp_rate[i].end(), 0.0);
     int window = 0;
@@ -425,6 +426,9 @@ double Particle::get_loglike_fromparams(Rcpp::List params) {
   loglike_control = get_loglike_control(lambda);
   loglike_treat = get_loglike_treat(lambda, min_prob, half_point, hill_power, drug_pow);
   loglike = loglike_control + loglike_treat;
+  
+  print("Control arm:", loglike_control);
+  print("Treatment arm:", loglike_treat);
   
   return loglike;
 }

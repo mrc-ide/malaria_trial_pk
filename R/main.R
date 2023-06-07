@@ -96,7 +96,7 @@ run_mcmc <- function(data,
   # the control arm we just need the unique values in this vector and their
   # corresponding weights
   eir_unique <- unique(eir_adjustment)
-  eir_weight <- mapply(sum, split(ind_weight, f = match(eir_adjustment, eir_unique)))
+  eir_weight <- mapply(sum, split(data$ind_weight, f = match(eir_adjustment, eir_unique)))
   
   # ---------- define argument lists ----------
   
@@ -218,25 +218,16 @@ run_mcmc <- function(data,
 }
 
 #------------------------------------------------
-# update progress bar
-# pb_list = list of progress bar objects
-# name = name of this progress bar
-# i = new value of bar
-# max_i = max value of bar (close when reach this value)
-# close = whether to close when reach end
-#' @importFrom utils setTxtProgressBar
-#' @noRd
-update_progress <- function(pb_list, name, i, max_i, close = TRUE) {
-  setTxtProgressBar(pb_list[[name]], i)
-  if (i == max_i & close) {
-    close(pb_list[[name]])
-  }
-}
+#' @title Run drjacoby MCMC
+#'
+#' @description Returns the log-likelihood used within the main MCMC for a fixed
+#'   set of parameter values.
+#'
+#' @param data a list of data elements.
+#' @param params a named vector of the free parameters under the model.
+#'
+#' @export
 
-# Deal with user input cpp not being defined
-globalVariables(c("create_xptr"))
-
-#------------------------------------------------
 get_loglike <- function(data,
                         params) {
   
@@ -258,12 +249,40 @@ get_loglike <- function(data,
     control_lambda_weight[[i]] <- as.vector(table(window_match))
   }
   
+  # the eir_adjustment vector is needed in full for the treatment arm, but for
+  # the control arm we just need the unique values in this vector and their
+  # corresponding weights
+  eir_unique <- unique(eir_adjustment)
+  eir_weight <- mapply(sum, split(data$ind_weight, f = match(eir_adjustment, eir_unique)))
+  
   # data to pass to C++
   args_data <- c(data,
                  list(n_weeks = n_weeks,
                       control_lambda_index = control_lambda_index,
-                      control_lambda_weight = control_lambda_weight))
+                      control_lambda_weight = control_lambda_weight,
+                      eir_unique = eir_unique,
+                      eir_weight = eir_weight))
   
   get_loglike_cpp(list(args_data = args_data,
                        params = params))
 }
+
+#------------------------------------------------
+# update progress bar
+# pb_list = list of progress bar objects
+# name = name of this progress bar
+# i = new value of bar
+# max_i = max value of bar (close when reach this value)
+# close = whether to close when reach end
+#' @importFrom utils setTxtProgressBar
+#' @noRd
+update_progress <- function(pb_list, name, i, max_i, close = TRUE) {
+  setTxtProgressBar(pb_list[[name]], i)
+  if (i == max_i & close) {
+    close(pb_list[[name]])
+  }
+}
+
+# Deal with user input cpp not being defined
+globalVariables(c("create_xptr"))
+

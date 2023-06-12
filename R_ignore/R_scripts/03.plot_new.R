@@ -11,10 +11,11 @@ hill_func <- function(x, min_prob, half_point, hill_power) {
 # read in and process data
 
 # read in MCMC output
-mcmc <- readRDS("ignore/outputs/mcmc_raw.rds")
+# mcmc <- readRDS("ignore/outputs/mcmc_raw.rds")
 
 # read in trial data
-dat_trial <- read.csv("data/cisse_data.csv")
+dat_trial <- read.csv("data/cisse_data.csv") #%>%
+  # dplyr::filter(time.1 < 2000) ## appended data
 
 # read in drug concentration data
 dat_drug <- readRDS("data/quadrature_pk.rds")
@@ -43,12 +44,15 @@ drug_mat <- drug_mat[,-ncol(drug_mat)] # eat column is an hour, each row is a qu
 
 n_weeks <- 13
 n_hours <- n_weeks * 7 * 24
+## appended data only
+# n_hours <- max(dat_trial$time.1)
+# n_weeks <- n_hours/(24*7)
 
 # --------------------------
 # subsample and summarise MCMC output
 
 # subsample MCMC output
-n_sub <- 1e3
+n_sub <- 1e1
 mcmc_sub <- mcmc$output %>%
   dplyr::filter(phase == "sampling") %>%
   sample_n(n_sub)
@@ -69,45 +73,86 @@ for (i in 1:n_sub) {
   for (j in seq_along(eir_unique)) {
     prob_sus <- prob_sus + eir_weight[j]*exp(-eir_unique[j]*r)
   }
+  prob_sus <- prob_sus[1:ncol(control_mat)]
   control_mat[i,] <- 546*(1 - prob_sus)
   
   # treatment arm
   z_mat <- hill_func(drug_mat, mcmc_sub$min_prob[i], mcmc_sub$half_point[i], mcmc_sub$hill_power[i])
   exp_rate <- sweep(z_mat, 2, lambda_vec[week_vec] / 24, "*")
   exp_rate_cumsum <- t(apply(exp_rate, 1, cumsum))
-  eir_rate_adjusted <- sweep(exp_rate_cumsum, 1, eir_adjustment, "*")
+  eir_rate_adjusted <- sweep(exp_rate_cumsum, 1, eir_adjustment, "*")[,1:ncol(treat_mat)]
   treat_mat[i,] <- 542*(1 - colSums(w_combined * exp(-eir_rate_adjusted)))
 }
 Sys.time() - t0
 
-# summarise into quantiles and get into data.frame
-control_q95 <- t(apply(control_mat, 2, quantile_95))
-colnames(control_q95) <- sprintf("control_%s", colnames(control_q95))
+## look at data -- cumulative infections in each of the sub-sample (increase n_sub for final run)
+# View(control_mat)
+# View(treat_mat)
 
-treat_q95 <- t(apply(treat_mat, 2, quantile_95))
-colnames(treat_q95) <- sprintf("treat_%s", colnames(treat_q95))
+## convert matrices into correct format before finding quantiles
+quantiles_mcmc_arm <- function(real_data = dat_trial, drug_arm, mcmc_sample = arm_mat) {
+  #' input: real data to gain time steps, which treatment arm, output from the mcmc (wide format with cum inf each hour per sampled params)
+  #' process: extract time steps, convert mcmc data to infections in time intervals from data
+  #' output: dataframe comparible to the original trial data (n_infected/n_patients) with quantiles
+  treat_data <- real_data %>%
+    dplyr::filter(treat_arm == drug_arm)
+  max_time <- treat_data$time.1[nrow(treat_data)]
+  times <- c(treat_data$time, max_time)
+  N_patients <- treat_data$n_patients[1]
+  N_remaining <- N_patients
+  
+  df_mcmc <- treat_data[rep(seq_len(nrow(treat_data)), n_sub), ]
+  df_mcmc$sample <- rep(1:n_sub, each = nrow(treat_data))
+  df_mcmc$n_patients <- as.numeric(0)
+  df_mcmc$n_infected <- 0
+  
 
-df_model <- data.frame(time = 0:(nrow(control_q95) - 1)) %>%
-  bind_cols(control_q95) %>%
-  bind_cols(treat_q95)
+  df <- df_mcmc %>% 
+    dplyr::group_by(sample) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(n_infected = mcmc_sample[sample,time.1] - mcmc_sample[sample,time+1],
+                  n_patients = N_patients - mcmc_sample[sample,time.1]) %>%
+    dplyr::mutate(rate = n_infected/n_patients/(time.1-time))
+  
+  df_summary <- df %>% 
+    dplyr::group_by(time) %>%
+    dplyr::summarise(n_inf_2.5 = quantile(n_infected, 0.025, na.rm = TRUE),
+                     n_inf_50 = quantile(n_infected, 0.5, na.rm = TRUE),
+                     n_inf_97.5 = quantile(n_infected, 0.975, na.rm = TRUE),
+                     n_pat_2.5 = quantile(n_patients, 0.025, na.rm = TRUE),
+                     n_pat_50 = quantile(n_patients, 0.5, na.rm = TRUE),
+                     n_pat_97.5 = quantile(n_patients, 0.975, na.rm = TRUE),
+                     rate_2.5 = quantile(rate, 0.025, na.rm = TRUE),
+                     rate_50 = quantile(rate, 0.5, na.rm = TRUE),
+                     rate_97.5 = quantile(rate, 0.975, na.rm = TRUE))
+  df_summary$time.1 <- treat_data$time.1
+  df_summary$treat_arm <- as.factor(drug_arm)
+  
+  df_summary <- df_summary %>% 
+    dplyr::relocate(time.1, .before = n_inf_2.5)
+  
+  return(df_summary)
+  
+}
 
-# --------------------------
-# plot results
+## bug: runs line by line but not in function. using line by line version for first pass:
+control_summary <- quantiles_mcmc_arm(drug_arm = 1, mcmc_sample = control_mat)
+treat_summary <- quantiles_mcmc_arm(drug_arm = 2, mcmc_sample = treat_mat)
 
-# plot against KM data
-dat_trial %>%
-  group_by(treat_arm) %>%
-  dplyr::summarise(time = time.1,
-                   n_infected = cumsum(n_infected)) %>%
-  mutate(treat_arm = c("control", "treatment")[treat_arm],
-         treat_arm = factor(treat_arm)) %>%
-  ggplot() + theme_bw() +
-  geom_ribbon(aes(x = time / 24, ymin = control_Q2.5, ymax = control_Q97.5),
-              alpha = 0.2, fill = "red", data = df_model) +
-  geom_line(aes(x = time / 24, y = control_Q50), alpha = 0.2, col = "red", data = df_model) +
-  geom_ribbon(aes(x = time / 24, ymin = treat_Q2.5, ymax = treat_Q97.5),
-              alpha = 0.2, fill = "blue", data = df_model) +
-  geom_line(aes(x = time / 24, y = treat_Q50), alpha = 0.2, col = "blue", data = df_model) +
-  #geom_step(aes(x = time / 24, y = n_infected, col = treat_arm), direction = "hv") +
-  geom_point(aes(x = time / 24, y = n_infected, col = treat_arm), size = 0.8) +
-  xlab("Time (days)") + ylab("Number infected")
+saveRDS(control_summary, "control_summary.rds")
+saveRDS(treat_summary, "treat_summary.rds")
+
+mcmc_summary <- rbind(control_summary, treat_summary)
+saveRDS(mcmc_summary, "mcmc_summary.rds")
+
+# convert data to rates
+df_trial <- dat_trial %>%
+  dplyr::group_by(treat_arm) %>%
+  dplyr::mutate(rate = n_infected/n_patients/(time.1-time))
+df_trial$treat_arm <- as.factor(df_trial$treat_arm)
+
+ggplot() + geom_step(data = df_trial, aes(x = time, y = rate, col = treat_arm)) + 
+  facet_grid(treat_arm ~ ., scales = "free_y") +
+  theme_bw() + 
+  geom_stepribbon(data = mcmc_summary, aes(x = time, ymin = rate_2.5, ymax = rate_97.5, fill = treat_arm), alpha = 0.2) + 
+  geom_step(data = mcmc_summary, aes(x = time, y = rate_50, col = treat_arm), linetype = 2) + scale_color_discrete()

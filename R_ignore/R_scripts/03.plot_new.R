@@ -1,6 +1,10 @@
 ## plotting script from scratch to try and fix the issues with the current plotting script
 library(tidyverse)
 library(pammtools)
+library(ggpubr)
+library(cowplot)
+library(grid)
+library(gridExtra) 
 
 # hill function
 hill_func <- function(x, min_prob, half_point, hill_power) {
@@ -11,7 +15,7 @@ hill_func <- function(x, min_prob, half_point, hill_power) {
 # read in and process data
 
 # read in MCMC output
-# mcmc <- readRDS("ignore/outputs/mcmc_raw.rds")
+mcmc <- readRDS("ignore/outputs/mcmc_raw_final.rds")
 
 # read in trial data
 dat_trial <- read.csv("data/cisse_data.csv") #%>%
@@ -52,7 +56,7 @@ n_hours <- n_weeks * 7 * 24
 # subsample and summarise MCMC output
 
 # subsample MCMC output
-n_sub <- 1e1
+n_sub <- 1e3
 mcmc_sub <- mcmc$output %>%
   dplyr::filter(phase == "sampling") %>%
   sample_n(n_sub)
@@ -151,8 +155,44 @@ df_trial <- dat_trial %>%
   dplyr::mutate(rate = n_infected/n_patients/(time.1-time))
 df_trial$treat_arm <- as.factor(df_trial$treat_arm)
 
-ggplot() + geom_step(data = df_trial, aes(x = time, y = rate, col = treat_arm)) + 
-  facet_grid(treat_arm ~ ., scales = "free_y") +
-  theme_bw() + 
-  geom_stepribbon(data = mcmc_summary, aes(x = time, ymin = rate_2.5, ymax = rate_97.5, fill = treat_arm), alpha = 0.2) + 
-  geom_step(data = mcmc_summary, aes(x = time, y = rate_50, col = treat_arm), linetype = 2) + scale_color_discrete()
+arm_labs <- c("Placebo", "SP+AS")
+names(arm_labs) <- c(1,2)
+
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+col_scale_vals <- gg_color_hue(n = 2)
+names(col_scale_vals) <- as.factor(c(1,2))
+col_scale <- scale_colour_manual(name = "treat_arm", values = col_scale_vals)
+fill_scale <- scale_fill_manual(name = "treat_arm", values = col_scale_vals)
+
+mcmc_summary_treat <- mcmc_summary %>% 
+  dplyr::filter(treat_arm == 2) %>%
+  dplyr::mutate(facet_factor = "Treatment")
+mcmc_summary_combined <- mcmc_summary %>% 
+  dplyr::mutate(facet_factor = "Combined")
+mcmc_summary_final <- rbind(mcmc_summary_treat, mcmc_summary_combined)
+
+df_treat <- df_trial %>% 
+  dplyr::filter(treat_arm == 2) %>%
+  dplyr::mutate(facet_factor = "Treatment")
+df_combined <- df_trial %>% 
+  dplyr::mutate(facet_factor = "Combined")
+df_final <- rbind(df_treat, df_combined)
+
+ggplot() + geom_step(data = df_final, aes(x = time/24, y = rate * 1000, col = treat_arm)) + 
+  facet_grid(facet_factor ~ ., scales = "free_y") +
+  theme_bw() + theme(strip.text.y = element_blank()) +
+  geom_stepribbon(data = mcmc_summary_final, 
+                  aes(x = time/24, ymin = rate_2.5* 1000, ymax = rate_97.5* 1000, fill = treat_arm), alpha = 0.2) + 
+  geom_step(data = mcmc_summary_final, aes(x = time/24, y = rate_50* 1000, col = treat_arm), linetype = 2) + 
+  scale_color_discrete(labels = arm_labs) + 
+  scale_fill_discrete(labels = arm_labs) +
+  guides(fill = guide_legend(title = "Treatment arm"),
+         col = guide_legend(title = "Treatment arm")) +
+  labs(x = "Time (days)", y = "Infection rate per 1,000 children at risk per day ") + 
+  geom_vline(xintercept = c(0, 28, 56), linetype = "dotted")
+
+ggsave("output/mcmc_fit.png", dpi = 500, width = 20, height = 14, units = "cm")

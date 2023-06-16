@@ -31,8 +31,8 @@ eir_adjustment <- dat_drug %>%
   pull(eir_adjustment)
 
 # read in trial data and split into control vs. treatment
-dat_trial <- read.csv("data/cisse_data.csv") %>%
-  dplyr::filter(time.1 < 2000) ## note:: appended data!!
+dat_trial <- read.csv("data/cisse_data.csv") #%>%
+  # dplyr::filter(time.1 < 2000) ## note:: appended data!!
 dat_control <- dat_trial %>%
   dplyr::filter(treat_arm == 1) %>%
   dplyr::select(n_patients, n_infected, time, time.1)
@@ -51,11 +51,11 @@ mcmc <- run_mcmc(data = list(data_drug = dat_drug,
                              eir_adjustment = eir_adjustment),
                  burnin = 1e3,
                  samples = 5e3,
-                 chains = 1)
+                 chains = 10)
 
 
 
-# --------------------------
+ # --------------------------
 # exploratory plots
 
 # trace plots

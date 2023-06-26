@@ -199,3 +199,30 @@ median_posterior <- function(mcmc_summary, median_df) {
   }
   return(df)
 }
+
+sample_pe <- function(mcmc_output, num_samples, median_pk) {
+  
+  mcmc_post <- mcmc_output %>% 
+    dplyr::filter(phase == "sampling") %>%
+    dplyr::slice_sample(n = num_samples) %>% # select 100 random iterations from sampling phase 
+    dplyr::select(min_prob:hill_power)
+  
+  df <- data.frame(time = numeric(0),
+                   concentration = numeric(0),
+                   sample = numeric(0))
+  for(i in 1:num_samples) {
+    y <- data.frame(time = numeric(nrow(median_pk)),
+                    concentration = numeric(nrow(median_pk)),
+                    sample = numeric(nrow(median_pk)))
+    y$time <- median_pk$time
+    y$concentration <- median_pk$median_conc
+    y$efficacy <- 1 - hill_func(x = y$concentration,
+                                min_prob = mcmc_post$min_prob[i],
+                                half_point = mcmc_post$half_point[i],
+                                hill_power = mcmc_post$hill_power[i])
+    y$sample <- i
+    df <- rbind(df, y)
+  }
+  return(df)
+  
+}

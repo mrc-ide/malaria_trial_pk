@@ -252,3 +252,52 @@ ggplot() +
                                             ymin = lower_cri, ymax = upper_cri),
               alpha = .1) +
   labs(x = "days", y = "median sulfadoxine concentration (\u03bcg / ml)")
+
+pk_age_med <- pk_age_med %>% 
+  dplyr::group_by(age_group) %>%
+  dplyr::mutate(efficacy = 1 - hill_func(x = median/1000,
+                                         min_prob = mcmc_cri$median[1],
+                                         half_point = mcmc_cri$median[2],
+                                         hill_power = mcmc_cri$median[3]))
+pk_nut_med <- pk_nut_med %>% 
+  dplyr::group_by(z_score) %>%
+  dplyr::mutate(efficacy = 1 - hill_func(x = median/1000,
+                                         min_prob = mcmc_cri$median[1],
+                                         half_point = mcmc_cri$median[2],
+                                         hill_power = mcmc_cri$median[3]))
+
+test <- median_df %>% 
+  dplyr::mutate(median_efficacy = 1 - hill_func(x = median_conc/1000,
+                                                min_prob = mcmc_cri$median[1],
+                                                half_point = mcmc_cri$median[2],
+                                                hill_power = mcmc_cri$median[3]),
+                lower_cri_efficacy = 1 - hill_func(x = median_conc/1000,
+                                                   min_prob = mcmc_cri$lower_cri[1],
+                                                   half_point = mcmc_cri$lower_cri[2],
+                                                   hill_power = mcmc_cri$lower_cri[3]),
+                upper_cri_efficacy = 1 - hill_func(x = median_conc/1000,
+                                                   min_prob = mcmc_cri$upper_cri[1],
+                                                   half_point = mcmc_cri$upper_cri[2],
+                                                   hill_power = mcmc_cri$upper_cri[3]))
+
+ggplot(data = test) + theme_bw() +
+  geom_line(aes(x = time/24, y = median_efficacy)) +
+  geom_ribbon(aes(x = time/24, ymin = lower_cri_efficacy, ymax = upper_cri_efficacy), 
+              fill = "blue", alpha = 0.2)
+
+pe_sample <- sample_pe(mcmc$output, 1000, median_df)
+
+test <- pe_sample %>%
+  dplyr::group_by(time) %>%
+  dplyr::rowwise() %>%
+  dplyr::summarise(lower_cri = quantile(efficacy, 0.025),
+                   median = median(efficacy),
+                   upper_cri = quantile(efficacy, 0.975))
+
+ggplot(test) + geom_line(aes(x = time/24, y = median)) +
+  geom_ribbon(aes(x = time/24, ymin = lower_cri, ymax = upper_cri), 
+              alpha = 0.2, fill = "blue") + 
+  ylim(c(0,1)) + theme_bw()
+
+# ggplot(pk_age_med, aes(x = time/24, y = efficacy, col = age_group)) + geom_line() + theme_bw()
+# ggplot(pk_nut_med, aes(x = time/24, y = efficacy, col = z_score)) + geom_line() + theme_bw()

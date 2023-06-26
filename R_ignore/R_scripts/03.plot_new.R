@@ -5,6 +5,9 @@ library(ggpubr)
 library(cowplot)
 library(grid)
 library(gridExtra) 
+library(reldist)
+
+source("R_ignore/R_scripts/plot_functions.R")
 
 # hill function
 hill_func <- function(x, min_prob, half_point, hill_power) {
@@ -23,6 +26,8 @@ dat_trial <- read.csv("data/cisse_data.csv") #%>%
 
 # read in drug concentration data
 dat_drug <- readRDS("data/quadrature_pk.rds")
+
+quadrature_pk_1 <- readRDS("data/quadrature_pk_1.rds")
 
 # get weight of each group*quadrature combination
 w_combined <- dat_drug %>%
@@ -56,7 +61,7 @@ n_hours <- n_weeks * 7 * 24
 # subsample and summarise MCMC output
 
 # subsample MCMC output
-n_sub <- 1e3
+n_sub <- 1e1
 mcmc_sub <- mcmc$output %>%
   dplyr::filter(phase == "sampling") %>%
   sample_n(n_sub)
@@ -69,7 +74,7 @@ control_mat <- treat_mat <- matrix(NA, nrow = n_sub, ncol = n_hours)
 t0 <- Sys.time()
 for (i in 1:n_sub) {
   message(sprintf("%s of %s", i, n_sub))
-  
+
   # control arm
   lambda_vec <- unlist(mcmc_sub[i, sprintf("lambda_%s", 1:n_weeks)])
   r <- cumsum(lambda_vec[week_vec] / 24)
@@ -79,7 +84,7 @@ for (i in 1:n_sub) {
   }
   prob_sus <- prob_sus[1:ncol(control_mat)]
   control_mat[i,] <- 546*(1 - prob_sus)
-  
+
   # treatment arm
   z_mat <- hill_func(drug_mat, mcmc_sub$min_prob[i], mcmc_sub$half_point[i], mcmc_sub$hill_power[i])
   exp_rate <- sweep(z_mat, 2, lambda_vec[week_vec] / 24, "*")
@@ -89,65 +94,15 @@ for (i in 1:n_sub) {
 }
 Sys.time() - t0
 
-## look at data -- cumulative infections in each of the sub-sample (increase n_sub for final run)
-# View(control_mat)
-# View(treat_mat)
-
-## convert matrices into correct format before finding quantiles
-quantiles_mcmc_arm <- function(real_data = dat_trial, drug_arm, mcmc_sample = arm_mat) {
-  #' input: real data to gain time steps, which treatment arm, output from the mcmc (wide format with cum inf each hour per sampled params)
-  #' process: extract time steps, convert mcmc data to infections in time intervals from data
-  #' output: dataframe comparible to the original trial data (n_infected/n_patients) with quantiles
-  treat_data <- real_data %>%
-    dplyr::filter(treat_arm == drug_arm)
-  max_time <- treat_data$time.1[nrow(treat_data)]
-  times <- c(treat_data$time, max_time)
-  N_patients <- treat_data$n_patients[1]
-  N_remaining <- N_patients
-  
-  df_mcmc <- treat_data[rep(seq_len(nrow(treat_data)), n_sub), ]
-  df_mcmc$sample <- rep(1:n_sub, each = nrow(treat_data))
-  df_mcmc$n_patients <- as.numeric(0)
-  df_mcmc$n_infected <- 0
-  
-
-  df <- df_mcmc %>% 
-    dplyr::group_by(sample) %>%
-    dplyr::rowwise() %>%
-    dplyr::mutate(n_infected = mcmc_sample[sample,time.1] - mcmc_sample[sample,time+1],
-                  n_patients = N_patients - mcmc_sample[sample,time.1]) %>%
-    dplyr::mutate(rate = n_infected/n_patients/(time.1-time))
-  
-  df_summary <- df %>% 
-    dplyr::group_by(time) %>%
-    dplyr::summarise(n_inf_2.5 = quantile(n_infected, 0.025, na.rm = TRUE),
-                     n_inf_50 = quantile(n_infected, 0.5, na.rm = TRUE),
-                     n_inf_97.5 = quantile(n_infected, 0.975, na.rm = TRUE),
-                     n_pat_2.5 = quantile(n_patients, 0.025, na.rm = TRUE),
-                     n_pat_50 = quantile(n_patients, 0.5, na.rm = TRUE),
-                     n_pat_97.5 = quantile(n_patients, 0.975, na.rm = TRUE),
-                     rate_2.5 = quantile(rate, 0.025, na.rm = TRUE),
-                     rate_50 = quantile(rate, 0.5, na.rm = TRUE),
-                     rate_97.5 = quantile(rate, 0.975, na.rm = TRUE))
-  df_summary$time.1 <- treat_data$time.1
-  df_summary$treat_arm <- as.factor(drug_arm)
-  
-  df_summary <- df_summary %>% 
-    dplyr::relocate(time.1, .before = n_inf_2.5)
-  
-  return(df_summary)
-  
-}
-
-## bug: runs line by line but not in function. using line by line version for first pass:
-control_summary <- quantiles_mcmc_arm(drug_arm = 1, mcmc_sample = control_mat)
-treat_summary <- quantiles_mcmc_arm(drug_arm = 2, mcmc_sample = treat_mat)
-
-saveRDS(control_summary, "control_summary.rds")
-saveRDS(treat_summary, "treat_summary.rds")
-
-mcmc_summary <- rbind(control_summary, treat_summary)
-saveRDS(mcmc_summary, "mcmc_summary.rds")
+# control_summary <- quantiles_mcmc_arm(drug_arm = 1, mcmc_sample = control_mat)
+# treat_summary <- quantiles_mcmc_arm(drug_arm = 2, mcmc_sample = treat_mat)
+# 
+# saveRDS(control_summary, "control_summary.rds")
+# saveRDS(treat_summary, "treat_summary.rds")
+# 
+# mcmc_summary <- rbind(control_summary, treat_summary)
+# saveRDS(mcmc_summary, "mcmc_summary.rds")
+mcmc_summary <- readRDS("mcmc_summary.rds")
 
 # convert data to rates
 df_trial <- dat_trial %>%
@@ -157,11 +112,6 @@ df_trial$treat_arm <- as.factor(df_trial$treat_arm)
 
 arm_labs <- c("Placebo", "SP+AS")
 names(arm_labs) <- c(1,2)
-
-gg_color_hue <- function(n) {
-  hues = seq(15, 375, length = n + 1)
-  hcl(h = hues, l = 65, c = 100)[1:n]
-}
 
 col_scale_vals <- gg_color_hue(n = 2)
 names(col_scale_vals) <- as.factor(c(1,2))
@@ -196,3 +146,109 @@ ggplot() + geom_step(data = df_final, aes(x = time/24, y = rate * 1000, col = tr
   geom_vline(xintercept = c(0, 28, 56), linetype = "dotted")
 
 ggsave("output/mcmc_fit.png", dpi = 500, width = 20, height = 14, units = "cm")
+
+mcmc_cri <- mcmc$output %>%
+  dplyr::filter(phase == "sampling") %>% 
+  tidyr::pivot_longer(cols = lambda_1:hill_power, names_to = "parameter", values_to = "value") %>% 
+  dplyr::group_by(parameter)  %>%
+  dplyr::mutate(scaling = if_else(grepl("lambda", parameter), 1000, 1)) %>%
+  dplyr::reframe(scaling = scaling, 
+                 median = median(value) * scaling,
+                 lower_cri = quantile(value, probs = 0.025) * scaling,
+                 upper_cri = quantile(value, probs = 0.975) * scaling) %>%
+  distinct() %>%
+  dplyr::arrange(factor(parameter, 
+                        levels = c("min_prob", "half_point", "hill_power",
+                                   paste0("lambda_", 1:13))))
+
+## diagnostics
+mcmc$diagnostics
+
+## figure 3 with the 6 panels, based upon the pharmacokinetics by age
+quadrature_pk <- readRDS("data/quadrature_pk_1.rds")
+concentration_vec <- seq(0, 50, by = 0.1)
+## pharamacodynamics
+pd_median <- median_pd(conc_vec = concentration_vec,
+                       mcmc_cri = mcmc_cri)
+pd_cri <- sample_pd(mcmc_output = mcmc$output, num_samples = 1000,
+                    conc_vec = concentration_vec)
+pd_plot <- ggplot() +
+  geom_line(data = pd_cri, aes(x = concentration, y = efficacy, group = sample),
+              alpha = 0.1, col = "darkgrey") +
+  geom_line(data = pd_median, aes(x = concentration, y = efficacy), lwd = 1) +
+  scale_x_log10() + theme_bw() +
+  labs(x = "log concentration (\u03bcl / ml)", y = "protective efficacy")
+
+## protective efficacy
+median_df <- median_pk(quad_pk)
+mcmc_post <- sample_posterior(mcmc_output = mcmc$output, num_samples = 1000, 
+                              median_df = median_df)
+head(mcmc_post)
+
+mcmc_median <- median_posterior(mcmc_summary = mcmc_cri, median_df = median_df)
+
+pk_plot <- ggplot() + 
+  geom_line(data = mcmc_post, aes(x = time/24, y = efficacy, group = sample),
+            alpha = 0.05, col = "darkgrey") +
+  theme_bw() +
+  geom_line(data = mcmc_median, aes(x = time/24, y = efficacy), lwd = 1) +
+  xlim(c(0.5/24, 60)) + labs(x = "time (days)") 
+
+
+quadrature_pk_age_nut <- quad_pk %>%
+  dplyr::group_by(individual) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(age_group = age_to_group(age),
+                z_score = group_to_zscore(as.numeric(group)))
+
+pk_age_med <- quadrature_pk_age_nut %>% 
+  dplyr::group_by(time, age_group) %>% 
+  dplyr::summarise(lower_cri = wtd.quantile(drug_value.conc, 
+                                            weight = weighting * pop_prop, q = 0.025),
+                   median = median(drug_value.conc),
+                   upper_cri = wtd.quantile(drug_value.conc, 
+                                            weight = weighting * pop_prop, q = 0.975))
+pk_nut_med <- quadrature_pk_age_nut %>% 
+  dplyr::group_by(time, z_score) %>% 
+  dplyr::summarise(lower_cri = wtd.quantile(drug_value.conc, 
+                                            weight = weighting * pop_prop, q = 0.025),
+                   median = median(drug_value.conc),
+                   upper_cri = wtd.quantile(drug_value.conc, 
+                                            weight = weighting * pop_prop, q = 0.975))
+
+quadrature_pk_cri <- quad_pk %>%
+  dplyr::group_by(time) %>%
+  dplyr::summarise(lower_cri = wtd.quantile(drug_value.conc, 
+                                            weight = weighting * pop_prop, q = 0.025),
+                   median = median(drug_value.conc),
+                   upper_cri = wtd.quantile(drug_value.conc, 
+                                            weight = weighting * pop_prop, q = 0.975))
+
+ggplot(data = quadrature_pk_cri, aes(x = time/24, y = median)) + 
+  geom_line() + 
+  geom_ribbon(aes(ymin = lower_cri, ymax = upper_cri), fill = "blue", alpha = .1) +
+  theme_bw() + xlim(c(0, 50)) + 
+  labs(x = "days", y = "median sulfadoxine concentration (\u03bcg / ml)")
+
+pk_age_med$age_group <- factor(pk_age_med$age_group)
+pk_nut_med$z_score <- factor(pk_nut_med$z_score)
+
+ggplot() + 
+  geom_line(data = pk_age_med, aes(x = time/24, y = median, col = age_group)) + 
+  theme_bw() + xlim(c(0,50)) + 
+  geom_line(data = quadrature_pk_cri, aes(x = time/24, y = median), 
+            col = "black", linetype = 2) + 
+  geom_ribbon(data = quadrature_pk_cri, aes(x = time/24, y = median, 
+                                            ymin = lower_cri, ymax = upper_cri),
+              alpha = .1) +
+  labs(x = "days", y = "median sulfadoxine concentration (\u03bcg / ml)")
+
+ggplot() + 
+  geom_line(data = pk_nut_med, aes(x = time/24, y = median, col = z_score)) + 
+  theme_bw() + xlim(c(0,50)) + 
+  geom_line(data = quadrature_pk_cri, aes(x = time/24, y = median), 
+            col = "black", linetype = 2) + 
+  geom_ribbon(data = quadrature_pk_cri, aes(x = time/24, y = median, 
+                                            ymin = lower_cri, ymax = upper_cri),
+              alpha = .1) +
+  labs(x = "days", y = "median sulfadoxine concentration (\u03bcg / ml)")

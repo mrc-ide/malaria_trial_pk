@@ -282,7 +282,8 @@ test <- median_df %>%
 
 ggplot(data = test) + theme_bw() +
   geom_line(aes(x = time/24, y = median_efficacy)) +
-  geom_ribbon(aes(x = time/24, ymin = lower_cri_efficacy, ymax = upper_cri_efficacy), 
+  geom_ribbon(aes(x = time/24, ymin = lower_cri_efficacy, 
+                  ymax = upper_cri_efficacy), 
               fill = "blue", alpha = 0.2)
 
 pe_sample <- sample_pe(mcmc$output, 1000, median_df)

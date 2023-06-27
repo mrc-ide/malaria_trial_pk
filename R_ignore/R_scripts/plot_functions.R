@@ -216,10 +216,12 @@ sample_pe <- function(mcmc_output, num_samples, median_pk) {
                     sample = numeric(nrow(median_pk)))
     y$time <- median_pk$time
     y$concentration <- median_pk$median_conc
-    y$efficacy <- 1 - hill_func(x = y$concentration,
-                                min_prob = mcmc_post$min_prob[i],
-                                half_point = mcmc_post$half_point[i],
-                                hill_power = mcmc_post$hill_power[i])
+    for(j in 1:nrow(y)) {
+      y$efficacy[j] <- 1 - hill_func(x = y$concentration[j],
+                                  min_prob = mcmc_post$min_prob[i],
+                                  half_point = mcmc_post$half_point[i],
+                                  hill_power = mcmc_post$hill_power[i])
+    }
     y$sample <- i
     df <- rbind(df, y)
   }

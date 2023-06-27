@@ -8,6 +8,7 @@ library(gridExtra)
 library(reldist)
 
 source("R_ignore/R_scripts/plot_functions.R")
+devtools::load_all(".")
 
 # hill function
 hill_func <- function(x, min_prob, half_point, hill_power) {
@@ -53,10 +54,6 @@ drug_mat <- drug_mat[,-ncol(drug_mat)] # eat column is an hour, each row is a qu
 
 n_weeks <- 13
 n_hours <- n_weeks * 7 * 24
-## appended data only
-# n_hours <- max(dat_trial$time.1)
-# n_weeks <- n_hours/(24*7)
-
 # --------------------------
 # subsample and summarise MCMC output
 
@@ -177,25 +174,25 @@ pd_plot <- ggplot() +
               alpha = 0.1, col = "darkgrey") +
   geom_line(data = pd_median, aes(x = concentration, y = efficacy), lwd = 1) +
   scale_x_log10() + theme_bw() +
-  labs(x = "log concentration (\u03bcl / ml)", y = "protective efficacy")
+  labs(x = "log concentration (\u03bcg / ml)", y = "Protective efficacy")
 
 ## protective efficacy
-median_df <- median_pk(quad_pk)
-mcmc_post <- sample_posterior(mcmc_output = mcmc$output, num_samples = 1000, 
+median_df <- median_pk(quadrature_pk_1)
+mcmc_post <- sample_posterior(mcmc_output = filter(mcmc$output, phase == "sampling"), num_samples = 1000, 
                               median_df = median_df)
 head(mcmc_post)
 
 mcmc_median <- median_posterior(mcmc_summary = mcmc_cri, median_df = median_df)
 
-pk_plot <- ggplot() + 
+pe_plot <- ggplot() + 
   geom_line(data = mcmc_post, aes(x = time/24, y = efficacy, group = sample),
             alpha = 0.05, col = "darkgrey") +
   theme_bw() +
   geom_line(data = mcmc_median, aes(x = time/24, y = efficacy), lwd = 1) +
-  xlim(c(0.5/24, 60)) + labs(x = "time (days)") 
+  xlim(c(0.5/24, 60)) + labs(x = "Time (days)", y = "Concentration (\u03bcg / ml)") 
 
 
-quadrature_pk_age_nut <- quad_pk %>%
+quadrature_pk_age_nut <- quadrature_pk_1 %>%
   dplyr::group_by(individual) %>%
   dplyr::rowwise() %>%
   dplyr::mutate(age_group = age_to_group(age),
@@ -216,7 +213,7 @@ pk_nut_med <- quadrature_pk_age_nut %>%
                    upper_cri = wtd.quantile(drug_value.conc, 
                                             weight = weighting * pop_prop, q = 0.975))
 
-quadrature_pk_cri <- quad_pk %>%
+quadrature_pk_cri <- quadrature_pk_1 %>%
   dplyr::group_by(time) %>%
   dplyr::summarise(lower_cri = wtd.quantile(drug_value.conc, 
                                             weight = weighting * pop_prop, q = 0.025),
@@ -266,39 +263,155 @@ pk_nut_med <- pk_nut_med %>%
                                          half_point = mcmc_cri$median[2],
                                          hill_power = mcmc_cri$median[3]))
 
-test <- median_df %>% 
-  dplyr::mutate(median_efficacy = 1 - hill_func(x = median_conc/1000,
-                                                min_prob = mcmc_cri$median[1],
-                                                half_point = mcmc_cri$median[2],
-                                                hill_power = mcmc_cri$median[3]),
-                lower_cri_efficacy = 1 - hill_func(x = median_conc/1000,
-                                                   min_prob = mcmc_cri$lower_cri[1],
-                                                   half_point = mcmc_cri$lower_cri[2],
-                                                   hill_power = mcmc_cri$lower_cri[3]),
-                upper_cri_efficacy = 1 - hill_func(x = median_conc/1000,
-                                                   min_prob = mcmc_cri$upper_cri[1],
-                                                   half_point = mcmc_cri$upper_cri[2],
-                                                   hill_power = mcmc_cri$upper_cri[3]))
+pe_sample <- sample_pe(filter(mcmc$output, phase == "sampling"), 1000, quadrature_pk_1)
 
-ggplot(data = test) + theme_bw() +
-  geom_line(aes(x = time/24, y = median_efficacy)) +
-  geom_ribbon(aes(x = time/24, ymin = lower_cri_efficacy, 
-                  ymax = upper_cri_efficacy), 
-              fill = "blue", alpha = 0.2)
+ggplot() + geom_line(data = pe_sample, aes(x = time/24, y = efficacy, group = sample), 
+                     alpha = 0.15, col = "darkgrey") +
+  ylim(c(0,1)) + theme_bw() + xlim(c(0.5, 60)) +
+  geom_line(data = pk_age_med, aes(x = time/24, y = efficacy, col = age_group), linewidth = 1) + 
+  labs(x = "time (days)", y = "protective efficacy") +
+  guides(col = guide_legend(title = "Age group")) 
 
-pe_sample <- sample_pe(mcmc$output, 1000, median_df)
+ggplot() + geom_line(data = pe_sample, aes(x = time/24, y = efficacy, group = sample), 
+                     alpha = 0.15, col = "darkgrey") +
+  ylim(c(0,1)) + theme_bw() + xlim(c(0.5, 60)) +
+  geom_line(data = pk_nut_med, aes(x = time/24, y = efficacy, col = z_score), linewidth = 1) + 
+  labs(x = "time (days)", y = "protective efficacy") +
+  guides(col = guide_legend(title = "Nutrition status"))
 
-test <- pe_sample %>%
-  dplyr::group_by(time) %>%
-  dplyr::rowwise() %>%
-  dplyr::summarise(lower_cri = quantile(efficacy, 0.025),
-                   median = median(efficacy),
-                   upper_cri = quantile(efficacy, 0.975))
 
-ggplot(test) + geom_line(aes(x = time/24, y = median)) +
-  geom_ribbon(aes(x = time/24, ymin = lower_cri, ymax = upper_cri), 
-              alpha = 0.2, fill = "blue") + 
-  ylim(c(0,1)) + theme_bw()
 
-# ggplot(pk_age_med, aes(x = time/24, y = efficacy, col = age_group)) + geom_line() + theme_bw()
-# ggplot(pk_nut_med, aes(x = time/24, y = efficacy, col = z_score)) + geom_line() + theme_bw()
+## create and save figures
+# figure 1 -- step fit
+ggplot() + geom_step(data = df_final, aes(x = time/24, y = rate * 1000, col = treat_arm)) + 
+  facet_grid(facet_factor ~ ., scales = "free_y") +
+  theme_bw() + theme(strip.text.y = element_blank()) +
+  geom_stepribbon(data = mcmc_summary_final, 
+                  aes(x = time/24, ymin = rate_2.5* 1000, ymax = rate_97.5* 1000, fill = treat_arm), alpha = 0.2) + 
+  geom_step(data = mcmc_summary_final, aes(x = time/24, y = rate_50* 1000, col = treat_arm), linetype = 2) + 
+  scale_color_discrete(labels = arm_labs) + 
+  scale_fill_discrete(labels = arm_labs) +
+  guides(fill = guide_legend(title = "Treatment arm"),
+         col = guide_legend(title = "Treatment arm")) +
+  labs(x = "Time (days)", y = "Infection rate per 1,000 children at risk per day ") + 
+  geom_vline(xintercept = c(0, 28, 56), linetype = "dotted")
+
+ggsave("output/figure_1.png", dpi = 500, width = 20, height = 14, units = "cm")
+
+# figure 2 - kaplan meier
+control_q95 <- t(apply(control_mat, 2, quantile_95))
+colnames(control_q95) <- sprintf("control_%s", colnames(control_q95))
+
+treat_q95 <- t(apply(treat_mat, 2, quantile_95))
+colnames(treat_q95) <- sprintf("treat_%s", colnames(treat_q95))
+
+df_model <- data.frame(time = 0:(nrow(control_q95) - 1)) %>%
+  bind_cols(control_q95) %>%
+  bind_cols(treat_q95)
+
+# --------------------------
+# plot results
+
+# plot against KM data
+dat_trial %>%
+  group_by(treat_arm) %>%
+  dplyr::summarise(time = time.1,
+                   n_infected = cumsum(n_infected)) %>%
+  mutate(treat_arm = c("Control", "Treatment")[treat_arm],
+         treat_arm = factor(treat_arm)) %>%
+  ggplot() + theme_bw() +
+  geom_ribbon(aes(x = time / 24, ymin = control_Q2.5, ymax = control_Q97.5),
+              alpha = 0.2, fill = "red", data = df_model) +
+  geom_line(aes(x = time / 24, y = control_Q50), alpha = 0.2, col = "red", data = df_model) +
+  geom_ribbon(aes(x = time / 24, ymin = treat_Q2.5, ymax = treat_Q97.5),
+              alpha = 0.2, fill = "blue", data = df_model) +
+  geom_line(aes(x = time / 24, y = treat_Q50), alpha = 0.2, col = "blue", data = df_model) +
+  #geom_step(aes(x = time / 24, y = n_infected, col = treat_arm), direction = "hv") +
+  geom_point(aes(x = time / 24, y = n_infected, col = treat_arm), size = 0.8) +
+  xlab("Time (days)") + ylab("Number infected") + 
+  guides(col = guide_legend("Treatment arm"), fill = guide_legend("Treatment arm"))
+ggsave("output/figure_2.png", dpi = 500, width = 20, height = 14, units = "cm")
+
+## figure 3 - multipanel plot
+pd_plot <- ggplot() +
+  geom_line(data = pd_cri, aes(x = concentration, y = efficacy, group = sample),
+            alpha = 0.1, col = "darkgrey") +
+  geom_line(data = pd_median, aes(x = concentration, y = efficacy), lwd = 1) +
+  scale_x_log10() + theme_bw() +
+  labs(x = "log concentration (\u03bcg / ml)", y = "Protective efficacy")
+
+pe_plot <- ggplot() + 
+  geom_line(data = mcmc_post, aes(x = time/24, y = efficacy, group = sample),
+            alpha = 0.05, col = "darkgrey") +
+  theme_bw() +
+  geom_line(data = mcmc_median, aes(x = time/24, y = efficacy), lwd = 1) +
+  xlim(c(0.5/24, 60)) + labs(x = "Time (days)", y = "Protective efficacy")
+
+pk_age <- ggplot() + 
+  geom_line(data = pk_age_med, aes(x = time/24, y = median/1000, col = age_group)) + 
+  theme_bw() + xlim(c(0,50)) + 
+  geom_line(data = quadrature_pk_cri, aes(x = time/24, y = median/1000), 
+            col = "black", linetype = 2) + 
+  geom_ribbon(data = quadrature_pk_cri, aes(x = time/24, y = median/1000, 
+                                            ymin = lower_cri/1000, ymax = upper_cri/1000),
+              alpha = .1) +
+  labs(x = "Time (days)", y = "Median sulfadoxine concentration (\u03bcg / ml)") +
+  guides(col = guide_legend(title = "Age group")) + #, nrow=2, byrow=TRUE))  + 
+  theme(legend.direction = "horizontal")
+
+pk_nut <- ggplot() + 
+  geom_line(data = pk_nut_med, aes(x = time/24, y = median/1000, col = z_score)) + 
+  theme_bw() + xlim(c(0,50)) + 
+  geom_line(data = quadrature_pk_cri, aes(x = time/24, y = median/1000), 
+            col = "black", linetype = 2) + 
+  geom_ribbon(data = quadrature_pk_cri, aes(x = time/24, y = median/1000, 
+                                            ymin = lower_cri/1000, ymax = upper_cri/1000),
+              alpha = .1) +
+  labs(x = "Time (days)", y = "Median sulfadoxine concentration (\u03bcg / ml)") +
+  guides(col = guide_legend(title = "Nutrition status")) + 
+  theme(legend.direction = "horizontal")
+
+pe_age <- ggplot() + geom_line(data = pe_sample, aes(x = time/24, y = efficacy, group = sample), 
+                               alpha = 0.15, col = "darkgrey") +
+  ylim(c(0,1)) + theme_bw() + xlim(c(0.5, 60)) +
+  geom_line(data = pk_age_med, aes(x = time/24, y = efficacy, col = age_group), linewidth = 1) + 
+  labs(x = "Time (days)", y = "Protective efficacy") +
+  guides(col = guide_legend(title = "Age group")) 
+
+pe_nut <- ggplot() + geom_line(data = pe_sample, aes(x = time/24, y = efficacy, group = sample), 
+                     alpha = 0.15, col = "darkgrey") +
+  ylim(c(0,1)) + theme_bw() + xlim(c(0.5, 60)) +
+  geom_line(data = pk_nut_med, aes(x = time/24, y = efficacy, col = z_score), linewidth = 1) + 
+  labs(x = "Time (days)", y = "Protective efficacy") +
+  guides(col = guide_legend(title = "Nutrition status"))
+
+get_legend <- function(a.gplot) {
+  tmp <- ggplot_gtable(ggplot_build(a.gplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend) }
+
+age_legend <- get_legend(pk_age)
+nut_legend <- get_legend(pk_nut)
+
+left_col <- ggpubr::ggarrange(pd_plot, pe_plot, ncol = 1, nrow = 2,
+                              labels = c("A", "B"))
+age_row <- ggpubr::ggarrange(pk_age + theme(legend.position = "none"), 
+                             pe_age  + theme(legend.position = "none"),
+                             ncol = 2,
+                             labels = c("C", "E"))
+age_row_legend <- ggpubr::ggarrange(age_row, age_legend, nrow = 2,
+                                    heights = c(10, 1))
+nut_row <- ggpubr::ggarrange(pk_nut + theme(legend.position = "none"), 
+                             pe_nut  + theme(legend.position = "none"),
+                             ncol = 2,
+                             labels = c("D", "F"))
+nut_row_legend <- ggpubr::ggarrange(nut_row, nut_legend, nrow = 2,
+                                    heights = c(10, 1))
+
+age_nut <- ggpubr::ggarrange(age_row_legend, nut_row_legend, nrow = 2)
+fig_3 <- ggpubr::ggarrange(left_col, age_nut, ncol = 2, widths = c(1, 2))
+
+jpeg("output/figure_3.jpg", width = 25, height = 15, units = "cm", res = 700)
+ggpubr::ggarrange(left_col, age_nut, ncol = 2, widths = c(1, 2))
+dev.off()

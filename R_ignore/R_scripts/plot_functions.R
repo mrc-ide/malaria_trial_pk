@@ -200,24 +200,31 @@ median_posterior <- function(mcmc_summary, median_df) {
   return(df)
 }
 
-sample_pe <- function(mcmc_output, num_samples, median_pk) {
+sample_pe <- function(mcmc_output, num_samples, quad_pk) {
   
   mcmc_post <- mcmc_output %>% 
     dplyr::filter(phase == "sampling") %>%
     dplyr::slice_sample(n = num_samples) %>% # select 100 random iterations from sampling phase 
     dplyr::select(min_prob:hill_power)
   
+  quad_sample <- sample(unique(quad_pk$individual), num_samples)
+  quad_df <- quad_pk %>%
+    dplyr::filter(individual %in% quad_sample)
+  
   df <- data.frame(time = numeric(0),
                    concentration = numeric(0),
                    sample = numeric(0))
   for(i in 1:num_samples) {
-    y <- data.frame(time = numeric(nrow(median_pk)),
-                    concentration = numeric(nrow(median_pk)),
-                    sample = numeric(nrow(median_pk)))
-    y$time <- median_pk$time
-    y$concentration <- median_pk$median_conc
+    pk_df <- quad_df %>%
+      dplyr::filter(individual == quad_sample[i])
+    
+    y <- data.frame(time = numeric(nrow(pk_df)),
+                    concentration = numeric(nrow(pk_df)),
+                    sample = numeric(nrow(pk_df)))
+    y$time <- pk_df$time
+    y$concentration <- pk_df$drug_value.conc
     for(j in 1:nrow(y)) {
-      y$efficacy[j] <- 1 - hill_func(x = y$concentration[j],
+      y$efficacy[j] <- 1 - hill_func(x = y$concentration[j]/1000,
                                   min_prob = mcmc_post$min_prob[i],
                                   half_point = mcmc_post$half_point[i],
                                   hill_power = mcmc_post$hill_power[i])

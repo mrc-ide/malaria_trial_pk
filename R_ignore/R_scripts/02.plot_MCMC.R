@@ -57,7 +57,7 @@ n_hours <- n_weeks * 7 * 24
 # subsample and summarise MCMC output
 
 # subsample MCMC output
-n_sub <- 1e1
+n_sub <- 1e2
 mcmc_sub <- mcmc$output %>%
   dplyr::filter(phase == "sampling") %>%
   sample_n(n_sub)
@@ -90,6 +90,9 @@ for (i in 1:n_sub) {
 Sys.time() - t0
 
 # summarise into quantiles and get into data.frame
+# control mat is a dataframe which for each mcmc sample has the number of infected individuals
+# per hour in that arm (given 3 doses). Do this for more samples:
+
 control_q95 <- t(apply(control_mat, 2, quantile_95))
 colnames(control_q95) <- sprintf("control_%s", colnames(control_q95))
 
@@ -99,6 +102,8 @@ colnames(treat_q95) <- sprintf("treat_%s", colnames(treat_q95))
 df_model <- data.frame(time = 0:(nrow(control_q95) - 1)) %>%
   bind_cols(control_q95) %>%
   bind_cols(treat_q95)
+
+saveRDS(df_model, "data/df_model.rds")
 
 # --------------------------
 # plot results

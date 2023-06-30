@@ -235,3 +235,44 @@ sample_pe <- function(mcmc_output, num_samples, quad_pk) {
   return(df)
   
 }
+
+ptp_aq <- function(time, r = 16.8, l = 0.915) {
+  y <- 1 - pgamma(time, shape = r, scale = l)
+  return(y)
+}
+
+r <- 16.8
+med_scale_aq <- 18.7/r
+low_scale_aq <- 16.1/r
+upp_scale_aq <- 21.5/r
+
+## test this
+time_vec <- seq(0, 60, by = 0.1)
+df <- data.frame(time = time_vec,
+                 efficacy = numeric(length(time_vec)))
+df_low <- df
+df_low$efficacy <- ptp_aq(time = df_low$time, l = low_scale_aq)
+df_low$val <- "low"
+
+df_med <- df
+df_med$efficacy <- ptp_aq(time = df_med$time, l = med_scale_aq)
+df_med$val <- "med"
+
+df_upp <- df
+df_upp$efficacy <- ptp_aq(time = df_upp$time, l = upp_scale_aq)
+df_upp$val <- "upp"
+
+aq_df <- rbind(df_low, df_med, df_upp)
+
+weibull <- function(time, scale, shape) {
+  pow <- -(time/scale)^shape
+  y <- exp(pow)
+  return(y)
+}
+# 
+# med_scale_sp_quint <- 16.52
+# low_scale_sp_quint <- 11.1984
+# upp_scale_sp_quint <- 34.0524
+# med_shape_sp_quint <- 3.5478
+# low_shape_sp_quint <- 1.2258
+# upp_shape_sp_quint <- 9.2486

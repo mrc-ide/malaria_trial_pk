@@ -9,6 +9,7 @@ library(reldist)
 
 source("R_ignore/R_scripts/plot_functions.R")
 devtools::load_all(".")
+old <- ggplot2::theme_set(theme_bw(base_size = 12)) 
 
 # hill function
 hill_func <- function(x, min_prob, half_point, hill_power) {
@@ -91,8 +92,11 @@ for (i in 1:n_sub) {
 }
 Sys.time() - t0
 
-# control_summary <- quantiles_mcmc_arm(drug_arm = 1, mcmc_sample = control_mat)
-# treat_summary <- quantiles_mcmc_arm(drug_arm = 2, mcmc_sample = treat_mat)
+control_mat[1:10,1:10]
+
+
+control_summary <- quantiles_mcmc_arm(drug_arm = 1, mcmc_sample = control_mat)
+treat_summary <- quantiles_mcmc_arm(drug_arm = 2, mcmc_sample = treat_mat)
 # 
 # saveRDS(control_summary, "control_summary.rds")
 # saveRDS(treat_summary, "treat_summary.rds")
@@ -264,6 +268,7 @@ pk_nut_med <- pk_nut_med %>%
                                          hill_power = mcmc_cri$median[3]))
 
 pe_sample <- sample_pe(filter(mcmc$output, phase == "sampling"), 1000, quadrature_pk_1)
+saveRDS(pe_sample, "data/pe_sample.rds")
 
 ggplot() + geom_line(data = pe_sample, aes(x = time/24, y = efficacy, group = sample), 
                      alpha = 0.15, col = "darkgrey") +
@@ -279,8 +284,96 @@ ggplot() + geom_line(data = pe_sample, aes(x = time/24, y = efficacy, group = sa
   labs(x = "time (days)", y = "protective efficacy") +
   guides(col = guide_legend(title = "Nutrition status"))
 
+# drug separation 
+aq_wide <- aq_df %>%
+  tidyr::pivot_wider(names_from = val, values_from = efficacy)
+
+# time in days
+ggplot(aq_wide, aes(x = time)) + geom_line(aes(y = med)) +
+  geom_ribbon(aes(ymin = low, ymax = upp), alpha = 0.2, fill = "blue")
+
+# time in hours
+sp_pe_cri <- pe_sample %>%
+  dplyr::group_by(time) %>%
+  dplyr::reframe(lower_cri = quantile(efficacy, probs = 0.025),
+                 median = median(efficacy),
+                 upper_cri = quantile(efficacy, probs = 0.975)) %>%
+  dplyr::mutate(time = time/24)
+
+ggplot(data = sp_pe_cri) + geom_ribbon(aes(x = time, 
+                                           ymin = lower_cri, ymax = upper_cri), 
+                                       fill = "red", alpha = 0.2) +
+  geom_line(aes(x = time, y = median), lwd = 0.4) +
+  labs(x = "Time (days)", y = "Protective efficacy") + xlim(c(0.5, 60))
+
+names(aq_wide) <- c("time", "low_aq", "med_aq", "upp_aq")
+names(sp_pe_cri) <- c("time", "low_sp", "med_sp", "upp_sp")
+
+drug_sep <- dplyr::inner_join(aq_wide, sp_pe_cri) %>%
+  dplyr::mutate(med_spaq = 1 - ((1-med_aq)*(1-med_sp)),
+                low_spaq = 1 - ((1-low_aq)*(1-low_sp)),
+                upp_spaq = 1 - ((1-upp_aq)*(1-upp_sp)))
+drug_sep$resistance <- "Triple"
+
+## don't think I can just take the lower and upper CI's on the parameters to compute the CI on the distribution
+
+sp_res <- read.csv("data/quint_cri.csv")
+
+names(aq_wide) <- c("time", "low_aq", "med_aq", "upp_aq")
+names(sp_res) <- c("time", "low_sp", "med_sp", "upp_sp")
+drug_sep_res <- dplyr::inner_join(aq_wide, sp_res) %>%
+  dplyr::mutate(med_spaq = 1 - ((1-med_aq)*(1-med_sp)),
+                low_spaq = 1 - ((1-low_aq)*(1-low_sp)),
+                upp_spaq = 1 - ((1-upp_aq)*(1-upp_sp)))
+
+ggplot(drug_sep_res) + 
+  geom_line(aes(x = time, y = med_aq), col = "blue") +
+  geom_ribbon(aes(x = time, ymin = low_aq, ymax = upp_aq), alpha = 0.2, fill = "blue") +
+  geom_line(aes(x = time, y = med_sp), col = "red")+
+  geom_ribbon(aes(x = time, ymin = low_sp, ymax = upp_sp), alpha = 0.2, fill = "red") +
+  geom_line(aes(x = time, y = med_spaq)) +
+  geom_ribbon(aes(x = time, ymin = low_spaq, ymax = upp_spaq), alpha = 0.5, fill = "darkgrey") + 
+  geom_point(x = 28, y = 0.90) +
+  geom_point(x = 28, y = 0.83) +
+  geom_point(x = 28, y = 0.77) +
+  labs(x = "Time (days)", y = "Protective efficacy") + 
+  scale_y_continuous(breaks = seq(0, 1, by = 0.2))
+
+drug_sep_res$resistance <- "Quintuple"
+
+drug_sep_long <- drug_sep %>%
+  tidyr::pivot_longer(low_aq:upp_spaq, names_to = "int_drug", values_to = "efficacy") %>%
+  dplyr::filter(time > 0)
+drug_res_long <- drug_sep_res %>%
+  tidyr::pivot_longer(low_aq:upp_spaq, names_to = "int_drug", values_to = "efficacy") %>%
+  dplyr::filter(time > 0)
+drug_res <- rbind(drug_sep_long, drug_res_long) %>%
+  rowwise() %>%
+  dplyr::mutate(interval = unlist(strsplit(int_drug, "_"))[1],
+                drug = unlist(strsplit(int_drug, "_"))[2]) %>%
+  dplyr::select(c(time:resistance, efficacy:drug)) %>%
+  pivot_wider(names_from = interval, values_from = efficacy)
+
+drug_res$drug <- as.factor(drug_res$drug)
+drug_res$resistance <- factor(drug_res$resistance, levels = c("Triple", "Quintuple"))
+
+data_pt <- data.frame(time = c(28, 42, 28),
+                      efficacy = c(0.94, 0.81, 0.90),
+                      resistance = c("Triple", "Quintuple", "Quintuple"),
+                      drug = rep("spaq", 3))
+data_pt$resistance <- factor(data_pt$resistance, levels = c("Triple", "Quintuple"))
+
+## pick up from here
+ggplot(drug_res, aes(x = time, col = drug, fill = drug)) + 
+  geom_line(aes(y = med), lwd = 0.8) + geom_ribbon(aes(ymin = low, ymax = upp), alpha = 0.2) + 
+  facet_grid(resistance ~ .) +
+  xlim(c(0, 60)) + 
+  labs(x = "Time (days)", y = "Protective efficacy") + 
+  geom_point(data = data_pt, aes(x = time, y = efficacy))
+ggsave("output/figure_4.png", dpi = 300, width = 20, height = 15, units = "cm")
 
 
+##------------------------------------------------------------------------------------------------------------
 ## create and save figures
 # figure 1 -- step fit
 ggplot() + geom_step(data = df_final, aes(x = time/24, y = rate * 1000, col = treat_arm)) + 

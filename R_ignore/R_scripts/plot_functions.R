@@ -200,38 +200,32 @@ median_posterior <- function(mcmc_summary, median_df) {
   return(df)
 }
 
-sample_pe <- function(mcmc_output, num_samples, quad_pk) {
-  
-  mcmc_post <- mcmc_output %>% 
-    dplyr::filter(phase == "sampling") %>%
-    dplyr::slice_sample(n = num_samples) %>% # select 100 random iterations from sampling phase 
-    dplyr::select(min_prob:hill_power)
-  
-  quad_sample <- sample(unique(quad_pk$individual), num_samples)
-  quad_df <- quad_pk %>%
-    dplyr::filter(individual %in% quad_sample)
+pe_cri <- function(mcmc_output = mcmc_output,
+                   quad_1) { # use the quadrature info with only 1 dose
   
   df <- data.frame(time = numeric(0),
-                   concentration = numeric(0),
-                   sample = numeric(0))
-  for(i in 1:num_samples) {
-    pk_df <- quad_df %>%
-      dplyr::filter(individual == quad_sample[i])
+                      efficacy = numeric(0),
+                      iteration = numeric(0))
+  for(i in 1:nrow(mcmc_output)) {  
+    dummy <- quad_1 %>%
+      dplyr::filter(time %in% seq(from = 0, to = 60*24, by = 12)) %>%
+      dplyr::rowwise() %>%
+      dplyr::mutate(efficacy = 1 - hill_func(x = drug_value.conc/1000, 
+                                             min_prob = mcmc_output$min_prob[i],
+                                             half_point = mcmc_output$half_point[i],
+                                             hill_power = mcmc_output$hill_power[i]))
     
-    y <- data.frame(time = numeric(nrow(pk_df)),
-                    concentration = numeric(nrow(pk_df)),
-                    sample = numeric(nrow(pk_df)))
-    y$time <- pk_df$time
-    y$concentration <- pk_df$drug_value.conc
-    for(j in 1:nrow(y)) {
-      y$efficacy[j] <- 1 - hill_func(x = y$concentration[j]/1000,
-                                  min_prob = mcmc_post$min_prob[i],
-                                  half_point = mcmc_post$half_point[i],
-                                  hill_power = mcmc_post$hill_power[i])
-    }
-    y$sample <- i
-    df <- rbind(df, y)
+    med_df <- dummy %>%
+      dplyr::group_by(time) %>%
+      dplyr::reframe(efficacy = reldist::wtd.quantile(efficacy, 
+                                                      weight = weighting * pop_prop)) %>%
+      dplyr::mutate(iteration = i) %>%
+      dplyr::select(c(time, efficacy, iteration))
+    
+    df <- rbind(df, med_df)
+    
   }
+  
   return(df)
   
 }

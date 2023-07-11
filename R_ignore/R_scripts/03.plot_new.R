@@ -267,8 +267,25 @@ pk_nut_med <- pk_nut_med %>%
                                          half_point = mcmc_cri$median[2],
                                          hill_power = mcmc_cri$median[3]))
 
-pe_sample <- sample_pe(filter(mcmc$output, phase == "sampling"), 1000, quadrature_pk_1)
+quad_df <- quadrature_pk_1 %>%
+  dplyr::select(c(individual, time, drug_value.conc, weighting, pop_prop))
+
+mcmc_output <- mcmc$output %>%
+  dplyr::filter(phase == "sampling") %>%
+  dplyr::select(c(min_prob, half_point, hill_power)) 
+
+# profile_pe <- profvis::profvis(pe_cri(mcmc_output[1:10,], quadrature_pk_1))
+pe_sample <- pe_cri(mcmc_output, quad_df)
+pe_cri <- pe_sample %>% 
+  dplyr::group_by(time) %>%
+  dplyr::reframe(lower_cri = quantile(efficacy, 0.025),
+                 median = median(efficacy),
+                 upper_cri = quantile(efficacy, 0.975))
+ggplot(pe_cri) + geom_line(aes(x=time/24, y = median))+
+  geom_ribbon(aes(x = time/24, ymin = lower_cri, ymax = upper_cri))
+
 saveRDS(pe_sample, "data/pe_sample.rds")
+saveRDS(pe_cri, "data/pe_cri.rds")
 
 ggplot() + geom_line(data = pe_sample, aes(x = time/24, y = efficacy, group = sample), 
                      alpha = 0.15, col = "darkgrey") +

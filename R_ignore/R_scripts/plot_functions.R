@@ -208,7 +208,7 @@ pe_cri <- function(mcmc_output = mcmc_output,
                       iteration = numeric(0))
   for(i in 1:nrow(mcmc_output)) {  
     dummy <- quad_1 %>%
-      dplyr::filter(time %in% seq(from = 0, to = 60*24, by = 12)) %>%
+      dplyr::filter(time %in% seq(from = 0, to = 60*24, by = 4)) %>%
       dplyr::rowwise() %>%
       dplyr::mutate(efficacy = 1 - hill_func(x = drug_value.conc/1000, 
                                              min_prob = mcmc_output$min_prob[i],

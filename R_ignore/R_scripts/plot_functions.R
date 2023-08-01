@@ -160,7 +160,7 @@ sample_posterior <- function(mcmc_output, num_samples = 100, median_df) {
     dplyr::filter(phase == "sampling") %>%
     dplyr::slice_sample(n = num_samples) %>% # select 100 random iterations from sampling phase 
     dplyr::select(min_prob:hill_power)
-
+  
   df <- data.frame(time = numeric(0), concentration = numeric(0),
                    efficacy = numeric(0), sample = numeric(0)) 
   len <- nrow(median_df)
@@ -170,7 +170,60 @@ sample_posterior <- function(mcmc_output, num_samples = 100, median_df) {
                     efficacy = numeric(len), sample = numeric(len))
     y$time <- median_df$time
     y$concentration <- median_df$median_conc
-      
+    
+    for(j in 1:nrow(y)) {
+      y$efficacy[j] <- 1 - hill_func(x = y$concentration[j]/1000,
+                                     min_prob = mcmc_post$min_prob[i],
+                                     half_point = mcmc_post$half_point[i],
+                                     hill_power = mcmc_post$hill_power[i])
+    }
+    y$sample <- i
+    
+    df <- rbind(df, y)
+  }
+  return(df)
+}
+
+mean_pk <- function(quad_pk) {
+  mean_df <- quad_pk %>%
+    dplyr::group_by(time) %>%
+    dplyr::reframe(mean_conc = reldist::wtd.mean(drug_value.conc, 
+                                                       weight = weighting*pop_prop)) %>%
+    dplyr::distinct()
+  
+  max_data <- max(mean_df$mean_conc)
+  ind <- which(mean_df$mean_conc == max_data)
+  data_subset <- mean_df[ind:nrow(mean_df),]
+  data_subset[,2] <- log(data_subset[,2])
+  names(data_subset)[2] <- "log_concentration"
+  
+  fit <- lm(formula = log_concentration ~ time, data = data_subset)
+  
+  c_0 <- exp(fit$coefficients[1]) 
+  k <- -(fit$coefficients[2]) 
+  
+  df <- mean_df
+  df$mean_conc <- c_0 * exp(-k * df$time)
+  
+  return(df)
+}
+
+sample_posterior_mean <- function(mcmc_output, num_samples = 100, mean_df) {
+  mcmc_post <- mcmc_output %>% 
+    dplyr::filter(phase == "sampling") %>%
+    dplyr::slice_sample(n = num_samples) %>% # select 100 random iterations from sampling phase 
+    dplyr::select(min_prob:hill_power)
+  
+  df <- data.frame(time = numeric(0), concentration = numeric(0),
+                   efficacy = numeric(0), sample = numeric(0)) 
+  len <- nrow(mean_df)
+  
+  for(i in 1:nrow(mcmc_post)){ 
+    y <- data.frame(time = numeric(len), concentration = numeric(len),
+                    efficacy = numeric(len), sample = numeric(len))
+    y$time <- mean_df$time
+    y$concentration <- mean_df$mean_conc
+    
     for(j in 1:nrow(y)) {
       y$efficacy[j] <- 1 - hill_func(x = y$concentration[j]/1000,
                                      min_prob = mcmc_post$min_prob[i],
@@ -200,6 +253,23 @@ median_posterior <- function(mcmc_summary, median_df) {
   return(df)
 }
 
+mean_posterior <- function(mcmc_summary, mean_df) { 
+  min_prob <- mcmc_summary$median[1]
+  half_point <- mcmc_summary$median[2]
+  hill_power <- mcmc_summary$median[3]
+  
+  df <- mean_df
+  df$efficacy <- numeric(nrow(df))
+  for(i in 1:nrow(df)) {
+    df$efficacy[i] <- 1 - hill_func(x = df$mean_conc[i]/1000,
+                                    min_prob = min_prob,
+                                    half_point = half_point,
+                                    hill_power = hill_power)
+  }
+  return(df)
+}
+
+
 pe_cri <- function(mcmc_output = mcmc_output,
                    quad_1) { # use the quadrature info with only 1 dose
   
@@ -208,16 +278,15 @@ pe_cri <- function(mcmc_output = mcmc_output,
                       iteration = numeric(0))
   for(i in 1:nrow(mcmc_output)) {  
     dummy <- quad_1 %>%
-      dplyr::filter(time %in% seq(from = 0, to = 60*24, by = 4)) %>%
-      dplyr::rowwise() %>%
-      dplyr::mutate(efficacy = 1 - hill_func(x = drug_value.conc/1000, 
-                                             min_prob = mcmc_output$min_prob[i],
-                                             half_point = mcmc_output$half_point[i],
-                                             hill_power = mcmc_output$hill_power[i]))
+      dplyr::filter(time %in% seq(from = 0, to = 60*24, by = 4)) 
+    dummy$efficacy <-  1 - hill_func(x = dummy$drug_value.conc/1000, 
+                                     min_prob = mcmc_output$min_prob[i],
+                                     half_point = mcmc_output$half_point[i],
+                                     hill_power = mcmc_output$hill_power[i])
     
     med_df <- dummy %>%
       dplyr::group_by(time) %>%
-      dplyr::reframe(efficacy = reldist::wtd.quantile(efficacy, 
+      dplyr::reframe(efficacy = reldist::wtd.mean(efficacy, 
                                                       weight = weighting * pop_prop)) %>%
       dplyr::mutate(iteration = i) %>%
       dplyr::select(c(time, efficacy, iteration))

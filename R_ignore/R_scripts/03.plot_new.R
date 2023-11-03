@@ -6,8 +6,8 @@ library(cowplot)
 library(grid)
 library(gridExtra) 
 library(reldist)
+library(ggplot2)
 
-source("R_ignore/R_scripts/plot_functions.R")
 devtools::load_all(".")
 old <- ggplot2::theme_set(theme_bw(base_size = 12)) 
 
@@ -30,6 +30,8 @@ dat_trial <- read.csv("data/cisse_data.csv") #%>%
 dat_drug <- readRDS("data/quadrature_pk.rds")
 
 quadrature_pk_1 <- readRDS("data/quadrature_pk_1.rds")
+
+source("R_ignore/R_scripts/plot_functions.R")
 
 # get weight of each group*quadrature combination
 w_combined <- dat_drug %>%
@@ -111,7 +113,7 @@ df_trial <- dat_trial %>%
   dplyr::mutate(rate = n_infected/n_patients/(time.1-time))
 df_trial$treat_arm <- as.factor(df_trial$treat_arm)
 
-arm_labs <- c("Placebo", "SP+AS")
+arm_labs <- c("Control", "SP+AS")
 names(arm_labs) <- c(1,2)
 
 col_scale_vals <- gg_color_hue(n = 2)
@@ -133,7 +135,9 @@ df_combined <- df_trial %>%
   dplyr::mutate(facet_factor = "Combined")
 df_final <- rbind(df_treat, df_combined)
 
-rate_plot <- ggplot() + geom_step(data = df_final, aes(x = time/24, y = rate * 1000, col = treat_arm)) + 
+rate_plot <- ggplot() + geom_step(data = df_final, 
+                                  aes(x = time/24, y = rate * 1000, 
+                                      col = treat_arm)) + 
   facet_grid(facet_factor ~ ., scales = "free_y") +
   theme_bw() + theme(strip.text.y = element_blank()) +
   geom_stepribbon(data = mcmc_summary_final, 
@@ -146,22 +150,29 @@ rate_plot <- ggplot() + geom_step(data = df_final, aes(x = time/24, y = rate * 1
   labs(x = "Time (days)", y = "Infection rate per 1,000 \nchildren at risk per day ") + 
   geom_vline(xintercept = c(0, 28, 56), linetype = "dotted")
 
+# adapt so that the plotting colours and labels are consistent
 df_model <- readRDS("data/df_model.rds")
+df_model_control <- df_model %>% dplyr::select(time:control_Q97.5)
+df_model_spas <- df_model %>% dplyr::select(time, treat_Q2.5:treat_Q97.5)
+df_model_control$arm <- "Control"
+df_model_spas$arm <- "SP+AS"
+names(df_model_control) <- c("time", "Q2.5", "Q50", "Q97.5", "arm")
+names(df_model_spas) <- c("time", "Q2.5", "Q50", "Q97.5", "arm")
+df_model_long <- rbind(df_model_control, df_model_spas)
+df_model_long$arm <- factor(df_model_long$arm)
+
 km_plot <- dat_trial %>%
   group_by(treat_arm) %>%
   dplyr::summarise(time = time.1,
                    n_infected = cumsum(n_infected)) %>%
-  mutate(treat_arm = c("Control", "Treatment")[treat_arm],
+  mutate(treat_arm = c("Control", "SP+AS")[treat_arm],
          treat_arm = factor(treat_arm)) %>%
   ggplot() + theme_bw() +
-  geom_line(aes(x = time / 24, y = control_Q50), alpha = 0.2, 
-            col = "red", data = df_model, lty = 2, lwd = 0.8) +
-  geom_ribbon(aes(x = time / 24, ymin = control_Q2.5, ymax = control_Q97.5),
-              alpha = 0.2, fill = "red", data = df_model) +
-  geom_line(aes(x = time / 24, y = treat_Q50), alpha = 0.2, 
-            col = "blue", data = df_model, lty = 2, lwd = 0.8) +
-  geom_ribbon(aes(x = time / 24, ymin = treat_Q2.5, ymax = treat_Q97.5),
-              alpha = 0.2, fill = "blue", data = df_model) +
+  geom_line(aes(x = time / 24, y = Q50, col = arm), 
+            alpha = 0.2, data = df_model_long, lty = 2, lwd = 0.8) +
+  geom_ribbon(aes(x = time / 24, ymin = Q2.5,
+                  ymax = Q97.5,fill = arm,),
+              alpha = 0.2, data = df_model_long) +
   #geom_step(aes(x = time / 24, y = n_infected, col = treat_arm), direction = "hv") +
   geom_point(aes(x = time / 24, y = n_infected, col = treat_arm), size = 0.8) +
   xlab("Time (days)") + ylab("\nNumber infected") + 
@@ -169,7 +180,7 @@ km_plot <- dat_trial %>%
   geom_vline(xintercept = c(0, 28, 56), linetype = "dotted")
 
 ggpubr::ggarrange(km_plot, rate_plot, ncol = 1, nrow = 2,
-                  labels = c("A", "B"))
+                  labels = c("A", "B"), common.legend = TRUE)
 ggsave("output/figure_1.png", dpi = 500, width = 20, height = 20, units = "cm")
 
 ### figure 2
@@ -302,7 +313,7 @@ plot_2d <- ggplot() +
 mcmc_output <- mcmc$output %>%
   dplyr::filter(phase == "sampling") %>%
   dplyr::select(c(min_prob, half_point, hill_power)) %>%
-  sample_n(size = 250)
+  sample_n(size = 50) # update to 250 for final run
 
 # pe_sample uses weighted means i.e. gives weighted mean per iteration
 t0 <- Sys.time()
@@ -378,9 +389,11 @@ pk_age_mean <- rbind(pk_age_0_1_sample,
 pk_nut_mean <- rbind(pk_nut_mal_sample, 
                      pk_nut_not_sample)
 
-pk_age_mean <- pk_age_mean %>% dplyr::group_by(time) %>% dplyr::mutate(pop_mean = mean(efficacy)) #%>%
+pk_age_mean <- pk_age_mean %>% dplyr::group_by(time) %>% 
+  dplyr::mutate(pop_mean = mean(efficacy)) #%>%
 # dplyr::filter(iteration <= 10)
-pk_nut_mean <- pk_nut_mean %>% dplyr::group_by(time) %>% dplyr::mutate(pop_mean = mean(efficacy)) #%>%
+pk_nut_mean <- pk_nut_mean %>% dplyr::group_by(time) %>% 
+  dplyr::mutate(pop_mean = mean(efficacy)) #%>%
 # dplyr::filter(iteration <= 25)
 pk_age_mean$age_group <- pk_age_mean$age_group
 pk_nut_mean$z_score <- pk_nut_mean$z_score
@@ -507,17 +520,28 @@ drug_res <- rbind(drug_sep_long, drug_res_long) %>%
 
 drug_res$drug <- as.factor(drug_res$drug)
 drug_res$resistance <- factor(drug_res$resistance, levels = c("Triple", "Quintuple"))
+drug_res <- drug_res %>%
+  dplyr::mutate(drug = toupper(drug),
+                drug = if_else(drug == "SPAQ", "SP+AQ", drug))
 
 data_pt <- data.frame(time = c(28, 42, 28),
                       efficacy = c(0.94, 0.81, 0.90),
                       resistance = c("Triple", "Quintuple", "Quintuple"),
-                      drug = rep("spaq", 3))
+                      drug = rep("SP+AQ", 3))
 data_pt$resistance <- factor(data_pt$resistance, levels = c("Triple", "Quintuple"))
 
-ggplot(drug_res, aes(x = time, col = drug, fill = drug)) + 
-  geom_line(aes(y = med), lwd = 0.8) + geom_ribbon(aes(ymin = low, ymax = upp), alpha = 0.2) + 
+ggplot(drug_res, aes(x = time, fill = drug)) + 
+  geom_line(aes(y = med, col = drug), lwd = 0.8) + geom_ribbon(aes(ymin = low, ymax = upp), alpha = 0.2) + 
   facet_grid(resistance ~ .) +
   xlim(c(0, 60)) + 
   labs(x = "Time (days)", y = "Protective efficacy") + 
-  geom_point(data = data_pt, aes(x = time, y = efficacy))
+  geom_point(data = data_pt, aes(x = time, y = efficacy)) +
+  guides(col = guide_legend("Drug"), fill = guide_legend("Drug"))
 ggsave("output/figure_3.png", dpi = 300, width = 20, height = 15, units = "cm")
+
+drug_res %>% dplyr::filter(resistance == "Quintuple") %>% 
+  dplyr::filter(drug == "spaq") %>%
+  dplyr::filter(time %in% seq(0, 28)) %>%
+  dplyr::reframe(mean = mean(med),
+                 lower_cri = mean(low),
+                 upper_cri = mean(upp))
